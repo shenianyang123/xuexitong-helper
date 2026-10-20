@@ -74,6 +74,8 @@ v3_optimized.user.js         【构建产物】油猴脚本
 
 `v3_optimized.js`、`v3_optimized.user.js`、`deepseek-console/xuexitong-console.js` **都是构建产物，不要直接改**；改源码后重新构建即可。
 
+`deepseek-console/xuexitong-console.ready.js`、`.env.local`、`.local-token` 是**本机运行时生成的文件**（含本机令牌/Key），已被 `.gitignore` 忽略，不会出现在仓库里。
+
 ## 构建
 
 ```bash
@@ -87,28 +89,48 @@ node tests/verify.mjs         # 校验产物与源码同步且语法有效
 
 ## 使用方法
 
+三种方式按需选一种即可：**只想要自动播放 → 方式一（连仓库都不用下载，复制一个文件即可）**；长期使用 → 方式二；要自动答章节测验 → 方式三。
+
 ### 方式一：浏览器控制台（最快，只要自动播放）
 
-1. 打开学习通课程播放页（`.../mycourse/studentstudy?...`）；
-2. `F12` → Console；
-3. 粘贴 `v3_optimized.js` 全文，回车；
-4. 右下角出现**悬浮球**即启动成功；点球展开功能菜单（球可拖动，位置会记住）。
+1. 打开 [v3_optimized.js](https://github.com/shenianyang123/xuexitong-helper/blob/main/v3_optimized.js)，点右上角 **Raw**，`Ctrl+A` → `Ctrl+C` 复制全文（约 2000 行，别复制漏了，末尾是 `})();`）；
+2. 登录学习通，打开课程播放页（地址含 `/mycourse/studentstudy`）；
+3. 按 `F12` 打开开发者工具 → 切到 **Console（控制台）**；
+4. 粘贴全文 → 回车；
+5. 右下角出现**悬浮球**即启动成功，点球展开功能菜单（球可拖动，位置会记住）。
+
+> 如果控制台提示 `Warning: Don't paste code into the DevTools Console`（新版 Chrome/Edge 的防粘贴保护），先在控制台里手动输入 `allow pasting` 回车，再粘贴。
 
 ### 方式二：Tampermonkey（长期使用）
 
-1. 安装 Tampermonkey；
-2. 新建脚本，粘贴 `v3_optimized.user.js` 全文（已包含元数据头）；
-3. 刷新学习通播放页。
+1. 浏览器安装 Tampermonkey 扩展；
+2. 打开 [v3_optimized.user.js](https://github.com/shenianyang123/xuexitong-helper/blob/main/v3_optimized.user.js) 点 **Raw**，Tampermonkey 会弹出安装页 → 安装（也可新建脚本后粘贴全文，元数据头已包含）；
+3. 打开/刷新学习通播放页，右下角出现悬浮球即生效。
 
 ### 方式三：DeepSeek 章节测验自动作答（可选）
 
-1. 准备一个 [DeepSeek API Key](https://platform.deepseek.com/)；
-2. 双击 `deepseek-console/start-local-service.cmd`（首次会提示输入 Key，输入时不显示是正常的，Key 只存在本机）；
-3. 页面会生成 `deepseek-console/xuexitong-console.ready.js`，保持黑色命令行窗口开着；
-4. 学习通播放页 F12 → Console → 粘贴 `xuexitong-console.ready.js` 全文；
-5. 弹出的「学习通自动任务辅助窗口」不要关，右下角出现悬浮球即成功。
+> 这个版本需要在本机跑一个 Node.js 本地服务，所以**要把整个项目下载下来**。仓库里**不含** `xuexitong-console.ready.js`，它是启动服务时在你的电脑上生成的（内含本机令牌，不应进仓库）。
+
+1. 准备一个 [DeepSeek API Key](https://platform.deepseek.com/)（需自己有余额）；
+2. 下载项目：本页右上角 **Code → Download ZIP** 解压（会 git 的话 `git clone https://github.com/shenianyang123/xuexitong-helper.git`）。本机需已安装 Node.js 20+；
+3. 双击 `deepseek-console/start-local-service.cmd`（首次会提示输入 Key，输入时不显示是正常的，Key 只存在本机）；
+4. 窗口里会打印生成的 `deepseek-console/xuexitong-console.ready.js` 路径，保持这个黑色命令行窗口开着；
+5. 学习通播放页 `F12` → Console → 粘贴 `xuexitong-console.ready.js` 全文（同样可能需要先输 `allow pasting`）；
+6. 弹出的「学习通自动任务辅助窗口」不要关，右下角出现悬浮球即成功。
 
 详见 [deepseek-console/README.md](deepseek-console/README.md)。
+
+### 常见问题
+
+| 现象 | 处理 |
+| --- | --- |
+| 粘贴后没任何反应 | 确认在**控制台 Console** 而不是 Elements/Network 面板；确认地址是 `/mycourse/studentstudy` 播放页；看 Console 有没有红色报错 |
+| 悬浮球不见了 | 刷新页面重新粘贴；或控制台执行 `app.showHud(true)` |
+| `Warning: Don't paste code...` | 在 Console 手动输入 `allow pasting` 后回车，再粘贴 |
+| 方式三提示 `本地服务不可用` | 黑窗口是否还开着；浏览器弹「允许访问本地网络」时选允许；杀毒软件是否拦了 `127.0.0.1:37841` |
+| 方式三提示 `本地令牌不匹配` / `尚未写入本地服务令牌` | 粘的是 `xuexitong-console.js`（模板）而不是 `xuexitong-console.ready.js`；或服务重启过，重新复制新的 ready 文件 |
+| 一直卡在纯课件小节 | 学习通会提示有任务未完成，默认不跳过：确认无需处理后 `app.nextUnit()`，或 `app.configs.autoAdvanceNoVideo = true` |
+| 倍速/静音不生效 | 部分课程播放器禁用倍速；V4（方式三）默认静音播放，浏览器自动播放策略要求静音 |
 
 ### 常用命令
 

@@ -6,6 +6,14 @@
 - API Key **不写入脚本文件**，通过环境变量或 `.env.local` 提供；
 - 本地服务只监听 `127.0.0.1:37841`，页面脚本通过短期令牌鉴权。
 
+## 零、先把文件拿到本地
+
+这个版本需要在本机跑 Node.js 服务，所以要下载整个项目（不能只在浏览器里复制一段代码）：
+
+1. 打开仓库页 https://github.com/shenianyang123/xuexitong-helper → 右上角 **Code → Download ZIP**，解压到任意目录（会 git 的话直接 `git clone`）；
+2. 本机需要 **Node.js 20+**（`node -v` 能输出版本号即可）；
+3. 仓库里**不含** `xuexitong-console.ready.js`——它由下面的服务启动时在你的电脑上生成（内含本机令牌，不应提交到仓库）。
+
 ## 一、准备 API Key（只需一次）
 
 任选一种方式，服务启动时按顺序读取：
@@ -35,8 +43,8 @@
 
 ## 二、启动本地服务
 
-1. 确认已构建产物：在仓库根目录执行 `node scripts/build.mjs`（或确认 `xuexitong-console.js` 已存在）；
-2. 双击本目录的 **`启动 DeepSeek 本地服务.cmd`**（文件名 `start-local-service.cmd`）；
+1. 确认构建产物存在：仓库里已自带 `xuexitong-console.js`；如果你改过 `src/` 源码，在仓库根目录执行 `node scripts/build.mjs` 重新生成；
+2. 双击本目录的 **`start-local-service.cmd`**（Windows 批处理，标题为「学习通 DeepSeek 本地服务」）；
 3. 窗口会显示：API Key 校验结果、模型名、以及**生成的 `xuexitong-console.ready.js` 路径**；
 4. **保持这个黑窗口打开**，直到课程刷完。
 
@@ -51,7 +59,7 @@
 
 1. 关掉之前安装的学习通油猴脚本，避免两边同时操作页面；
 2. Edge 打开学习通课程播放页（`.../mycourse/studentstudy?...`）；
-3. `F12` → Console，粘贴 **`xuexitong-console.ready.js`** 的全文，回车；
+3. `F12` → Console，粘贴 **`xuexitong-console.ready.js`** 的全文，回车（新版 Edge/Chrome 若提示 `Don't paste code`，先在控制台手动输入 `allow pasting` 回车再粘贴）；
 4. 脚本会打开一个小的“学习通自动任务辅助窗口”，请保持打开：它在“下一节”触发整页跳转后自动重新注入脚本；
 5. 之后可以关闭开发者工具，返回课程页。
 
