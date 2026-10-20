@@ -1,21 +1,11 @@
-import { readFileSync, writeFileSync } from 'node:fs';
-import { resolve } from 'node:path';
+/**
+ * 兼容旧命令：node scripts/build-userscript.mjs
+ * 现在由 scripts/build.mjs 统一生成三份产物（含 v3_optimized.user.js）。
+ */
 
-const root = resolve(import.meta.dirname, '..');
-const source = readFileSync(resolve(root, 'v3_optimized.js'), 'utf8').replace(/^\uFEFF/, '');
-const metadata = `// ==UserScript==
-// @name         学习通自动刷课脚本 V3 稳定版
-// @namespace    local.codex.xuexitong
-// @version      3.3.0
-// @description  自动播放、自动切换下一节，并在页面结构异常时安全停止
-// @author       Codex
-// @match        *://mooc1.chaoxing.com/mycourse/studentstudy*
-// @match        *://*.chaoxing.com/mycourse/studentstudy*
-// @match        *://*.chaoxing.com/mooc2-ans/mycourse/studentstudy*
-// @run-at       document-idle
-// @grant        none
-// ==/UserScript==
+import { buildAll } from './build.mjs';
 
-`;
-
-writeFileSync(resolve(root, 'v3_optimized.user.js'), `${metadata}${source}`, 'utf8');
+const written = buildAll();
+for (const path of written) {
+    console.log(`已生成 ${path.split(/[\\/]/).pop()}`);
+}

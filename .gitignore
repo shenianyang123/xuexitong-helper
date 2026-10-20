@@ -16,6 +16,14 @@ dist-ssr
 package-lock.json
 pnpm-lock.yaml
 
+# 本地服务运行时生成的文件（含真实令牌/密钥，禁止提交）
+deepseek-console/xuexitong-console.ready.js
+deepseek-console/.env.local
+deepseek-console/.local-token
+
+# 本地 npm 缓存（沙箱环境需要）
+.npm-cache
+
 # Editor directories and files
 .vscode/*
 !.vscode/extensions.json
@@ -26,3 +34,6 @@ pnpm-lock.yaml
 *.njsproj
 *.sln
 *.sw?
+
+# 视觉预览工具产物
+.dsh-vision-router/

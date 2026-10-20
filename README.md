@@ -1,158 +1,186 @@
-# 学习通自动刷课脚本 V3 稳定版
+# 学习通自动刷课助手（增强版）
 
-当前版本以 `v3_optimized.js` 为唯一源码，油猴版由构建脚本生成。它聚焦于稳定播放与课程导航：
+自动播放学习通课程视频、串联同一小节的多段视频、记录断点并在刷新后续播，附带一个右下角的可拖动悬浮球（点开是功能菜单）；另有一个可选的 DeepSeek 章节测验自动作答版本。
 
-- 自动播放视频
-- 视频结束后自动切换到下一小节
-- 章节测验页面的受限跳转（最多尝试 3 次，防止循环）
-- 从“学习目标”步骤自动切到“视频”步骤
-- 手动点“2视频”页签后自动重新接管播放
+无需 jQuery、无需安装任何浏览器插件（控制台粘贴即可用），源码零运行时依赖。
 
-这版的目标是保持原模板的行为方式，不再额外叠加复杂的后台保活、通知、测试按钮等附加层，尽量减少冲突。
-
-## DeepSeek 控制台练习版
-
-仓库新增了独立的 [DeepSeek 控制台版](deepseek-console/README.md)，通过本地服务调用 DeepSeek API，识别章节练习题并辅助作答。原有 V3 脚本入口保持不变。
-
-
-## 文件说明
-
-- [v3_optimized.js](v3_optimized.js)
-  控制台直接执行版本
-- [v3_optimized.user.js](v3_optimized.user.js)
-  Tampermonkey 油猴版本
-- [scripts/build-userscript.mjs](scripts/build-userscript.mjs)
-  根据控制台版本生成油猴版
-
-## 当前脚本行为
-
-### 1. 学习目标页
-
-如果当前小节先进入的是“学习目标”而不是视频页，脚本会尝试点击顶部的 `2视频` / `视频` 标签进入视频步骤。
-
-说明：
-- 这条路径已经按当前页面结构收紧，只走顶部视频标签，不再点击底部 `下一节` 按钮
-- 原因是底部按钮在当前页面里可能触发额外调试/暂停逻辑，稳定性较差
-
-### 2. 视频页
-
-进入视频页后，脚本会：
-
-- 识别 iframe 内的真实视频元素
-- 自动调用 `play()`
-- 如果播放被短暂中断，则尝试恢复播放
-- 如果普通播放失败，则尝试静音播放
-
-当前默认配置：
-
-```javascript
-configs: {
-    playbackRate: 1.5,
-    autoplay: true,
-    retryInterval: 2000,
-    maxRetries: 10,
-    videoCheckInterval: 1000,
-    autoAdvanceNoVideo: false,
-}
-```
-
-### 3. 视频结束后
-
-视频触发结束事件后，脚本会调用 `nextUnit()`，在课程目录树中定位到下一小节并点击进入。
-
-### 4. 章节测验
-
-如果当前不是视频而是“章节测验”页面，脚本会尝试点击：
-
-```javascript
-#prevNextFocusNext
-```
-
-以跳过当前测验步骤并继续后续流程。
-
-## 使用方法
-
-### 方法一：控制台执行
-
-1. 打开学习通课程播放页
-2. 按 `F12`
-3. 进入 `Console`
-4. 复制 [v3_optimized.js](v3_optimized.js) 全部内容
-5. 粘贴并执行
-
-首次执行后可用：
-
-```javascript
-app.run()
-app.nextUnit()
-```
-
-### 方法二：Tampermonkey
-
-1. 安装 Tampermonkey
-2. 导入 [v3_optimized.user.js](v3_optimized.user.js)
-3. 确认脚本已启用
-4. 刷新学习通播放页面
-
-## 已知说明
-
-### 0. 无视频或课件页面
-
-默认不会自动跳过无法识别的无视频页面，避免在课件未完成时反复触发“当前章节还有任务未完成”的平台提示。控制台会给出明确日志；确认当前节点无需处理后，可手动执行 `app.nextUnit()`。
-
-如果课程结构已确认安全，才可在控制台将 `app.configs.autoAdvanceNoVideo = true`，让脚本自动切换无视频小节。
-
-### 1. 为什么有时会看到 `AbortError`
-
-常见报错：
-
-```text
-The play() request was interrupted by a call to pause()
-```
-
-这通常不是视频坏了，而是：
-
-- 页面从步骤页切到视频页时，播放器初始化会短暂停一下
-- 页面内部脚本会在加载过程中重置播放状态
-- 浏览器对媒体播放请求进行了短暂中断
-
-脚本会优先尝试恢复播放，而不是立即判定失败。
-
-### 2. 为什么会出现重复日志
-
-如果同一页面反复粘贴执行脚本，会导致同一套监听和定时逻辑叠加，从而出现多次日志。
-
-建议：
-
-- 刷新页面后只执行一次
-- 如果使用油猴版，尽量不要再在控制台重复粘贴执行
-
-### 3. 为什么“静音播放成功”但一开始还能听到声音
-
-旧逻辑里曾经会在静音启动成功后恢复声音。当前建议使用持续静音方式，不再自动恢复。
-
-## 当前调试结论
-
-目前这版已经验证：
-
-- 顶部 `2视频` 标签可以程序化点击
-- 手动进入视频页后可以自动播放
-- 静音恢复链路可用
-
-目前重点保留的是稳定性，不再继续叠加额外功能。
-
-## 维护与验证
-
-修改 `v3_optimized.js` 后，执行：
-
-```bash
-node scripts/build-userscript.mjs
-node tests/verify-v3.mjs
-```
-
-第二条命令会验证两个入口的语法，并确认油猴脚本与唯一源码完全一致。
-
+---
 
 ## 免责声明
 
-本项目仅用于脚本调试、前端自动化研究和页面行为分析，请遵守目标平台的使用规定。
+**使用本项目前请务必阅读以下内容；一旦使用、复制或分发本项目的任何代码，即视为你已阅读、理解并同意本声明。**
+
+1. **用途限制**：本项目仅供**个人学习、前端技术研究与自动化脚本调试**使用。严禁用于商业用途，严禁用于代刷课、代考、代做作业等违反校纪校规、平台用户协议或法律法规的行为。
+2. **风险自负**：使用本脚本可能修改页面播放状态、自动切换章节、自动提交章节测验答案。由此产生的一切后果（包括但不限于课程进度/成绩异常、学分认定问题、账号被风控或封禁、数据丢失、被学校或平台追责等）**由使用者自行承担**，作者不承担任何直接或间接责任。
+3. **无官方关联**：本项目与超星学习通（chaoxing.com）、DeepSeek 官方**没有任何关联**，未获其授权、认可或支持。脚本只操作用户自己浏览器中**已登录**的页面。
+4. **合规义务**：请在使用前自行确认你所在学校、课程及平台的规定是否允许此类自动化操作，并自行评估风险。是否使用、如何使用，完全由你自行决定。
+5. **数据与隐私**：DeepSeek API Key 由使用者自行申请与付费，仅保存在本机（环境变量 / 本地 `.env.local`），本项目不收集、不上传任何用户数据。
+6. **删除承诺**：若相关权利人认为本项目侵犯其合法权益，请联系作者，本项目将立即停止分发并删除相关内容。
+7. 本项目按“现状”提供，不附带任何明示或暗示的担保。作者保留随时修改或停止维护的权利。
+
+---
+
+## 功能介绍
+
+悬浮球两种形态：平时只有一个球，点开才是功能菜单。
+
+| 收起（默认） | 点开菜单 |
+| --- | --- |
+| ![悬浮球](docs/hud-ball.png) | ![悬浮球菜单](docs/hud-menu.png) |
+
+| 功能 | 说明 |
+| --- | --- |
+| **自动播放** | 识别到视频步骤后自动 `play()`；被页面弹窗、切步骤、播放器重建打断时自动恢复播放（带重试与冷却，避免死循环） |
+| **多视频串联** | 同一小节常被拆成多段视频，脚本在 `ended` 后自动寻找下一段未播放的视频继续播，全部播完才切下一节；单小节有上限（默认 8 段）防循环 |
+| **断点续播** | 记录「已完成小节 + 每个视频的播放位置」到 `localStorage`；刷新、重开页面、甚至换到另一节课后，自动跳回上次位置并 seek 到对应秒数 |
+| **进度记录** | 每完成一节写入进度；`app.progress()` 可查已完成小节列表与续播目标；`app.resetProgress()` 一键清空 |
+| **悬浮球菜单** | 右下角圆形球（可拖动、记住位置）：状态、章节、第 n/N 个视频、进度条、已完成节数、最近日志；菜单内含倍速（0.75x–2.0x）、暂停/继续、下一节、重置进度，以及 4 个持久化开关 |
+| **设置持久化** | 所有开关、倍速、悬浮球位置/展开状态写入 `localStorage`，下次打开仍然生效；`app.configs.xxx = 值` 直接赋值即持久化 |
+| **课程导航** | 自动从「学习目标」切到「视频」步骤；视频播完自动切下一节 / 下一章；纯课件小节默认不跳过（可配置） |
+| **章节测验（基础版）** | 遇到章节测验步骤时自动跳过/放行，不阻塞视频推进 |
+| **章节测验（DeepSeek 版）** | 自动识别题目、请求本地 DeepSeek 服务作答、按题型选择选项、提交并进入下一节；可选，见 [deepseek-console/README.md](deepseek-console/README.md) |
+| **零依赖构建 + 测试** | `src/` 单份源码内联生成三份产物，构建产物可校验一致性；播放核心有 jsdom 单元测试，接口层与本地服务有独立测试（共 31 个用例） |
+
+### 兼容性
+
+- 浏览器：Chrome / Edge（新版），支持直接粘贴到 F12 控制台；也提供 Tampermonkey 版本。
+- 本地 DeepSeek 服务：Node.js 20+（开发验证于 Node 24.21）。
+- 不依赖页面是否加载了 jQuery。
+
+---
+
+## 目录结构
+
+```text
+src/                         源码（构建用，单份真源）
+  player-core.js             播放核心：播放、导航、多视频、断点续播、悬浮球菜单、设置
+  quiz-automation.js         DeepSeek 章节测验自动作答
+  entry-v3.js                V3 入口（控制台 / 油猴）
+  entry-console.js           V4 入口（Edge 控制台 + 本地 DeepSeek 服务）
+scripts/
+  build.mjs                  构建：把 src/ 内联成三份产物
+  verify-core.mjs            产物校验：与源码一致 + 语法有效
+  build-userscript.mjs       兼容旧命令（委托 build.mjs）
+tests/
+  verify.mjs                 产物校验入口
+  player.test.mjs            播放核心的 jsdom 测试
+  deepseek-request.test.mjs  DeepSeek 接口层测试
+  local-service.test.mjs     本地 DeepSeek 服务测试
+deepseek-console/            DeepSeek 本地服务与 V4 产物
+docs/                        悬浮球截图
+v3_optimized.js              【构建产物】控制台直接执行版
+v3_optimized.user.js         【构建产物】油猴脚本
+```
+
+`v3_optimized.js`、`v3_optimized.user.js`、`deepseek-console/xuexitong-console.js` **都是构建产物，不要直接改**；改源码后重新构建即可。
+
+## 构建
+
+```bash
+node scripts/build.mjs        # 生成三份产物
+node tests/verify.mjs         # 校验产物与源码同步且语法有效
+```
+
+`scripts/build-userscript.mjs` 与 `tests/verify-v3.mjs` 仍然可用，内部已委托给上面的新脚本。
+
+---
+
+## 使用方法
+
+### 方式一：浏览器控制台（最快，只要自动播放）
+
+1. 打开学习通课程播放页（`.../mycourse/studentstudy?...`）；
+2. `F12` → Console；
+3. 粘贴 `v3_optimized.js` 全文，回车；
+4. 右下角出现**悬浮球**即启动成功；点球展开功能菜单（球可拖动，位置会记住）。
+
+### 方式二：Tampermonkey（长期使用）
+
+1. 安装 Tampermonkey；
+2. 新建脚本，粘贴 `v3_optimized.user.js` 全文（已包含元数据头）；
+3. 刷新学习通播放页。
+
+### 方式三：DeepSeek 章节测验自动作答（可选）
+
+1. 准备一个 [DeepSeek API Key](https://platform.deepseek.com/)；
+2. 双击 `deepseek-console/start-local-service.cmd`（首次会提示输入 Key，输入时不显示是正常的，Key 只存在本机）；
+3. 页面会生成 `deepseek-console/xuexitong-console.ready.js`，保持黑色命令行窗口开着；
+4. 学习通播放页 F12 → Console → 粘贴 `xuexitong-console.ready.js` 全文；
+5. 弹出的「学习通自动任务辅助窗口」不要关，右下角出现悬浮球即成功。
+
+详见 [deepseek-console/README.md](deepseek-console/README.md)。
+
+### 常用命令
+
+```javascript
+app.configs.playbackRate = 2;            // 直接赋值即持久化
+app.updateSettings({ muteVideo: true }); // 批量修改设置
+app.togglePause();                       // 暂停/继续自动播放
+app.nextUnit();                          // 手动切换到下一节
+app.progress();                          // 查看已完成小节与续播目标
+app.resetProgress();                     // 清空进度记录
+app.showHud();                           // 展开/收起悬浮球菜单（showHud(true) 强制展开）
+app.removeHud();                         // 移除悬浮球（app.updateSettings({ hud: true }) 可恢复）
+```
+
+### 设置项
+
+全部可持久化（默认值见下）：
+
+| 设置 | 默认 | 作用 |
+| --- | --- | --- |
+| `playbackRate` | `1.5` | 播放倍速 |
+| `autoplay` | `true` | 是否自动播放 |
+| `playAllVideosInSection` | `true` | 同一小节多段视频是否自动接力 |
+| `maxVideosPerSection` | `8` | 单小节最多接力多少个视频（防循环） |
+| `sectionAdvanceDelayMs` | `4000` | 视频结束后等待新视频出现的最长时间 |
+| `muteVideo` | `false` | 是否静音（V4 默认 `true`） |
+| `autoResume` | `true` | 是否启用断点续播 |
+| `resumePosition` | `true` | 是否记录/恢复视频播放位置 |
+| `hud` | `true` | 是否显示悬浮球 |
+| `hudCollapsed` | `true` | 悬浮球菜单是否收起（默认只显示球；点球展开后自动置 `false`） |
+| `hudPosition` | `null` | 悬浮球位置（拖动后自动写入 `{left, top}`，`null` = 贴右下角） |
+| `autoAdvanceNoVideo` | `false` | 无视频小节是否自动跳过（默认关闭，避免课件未完成提示） |
+| `keepAlive` | `true` | 页面失焦/切后台时保持播放 |
+| `videoCheckInterval` | `1000` | 播放状态检查间隔（毫秒） |
+| `guardNoProgressMs` | `7000` | 播放卡住多久后尝试恢复 |
+| `retryInterval` / `maxRetries` | `2000` / `10` | 失败重试间隔与次数 |
+
+数据存在三个 key 里：`xuexitong.helper.settings.v1`、`xuexitong.helper.progress.v1`、`xuexitong.helper.positions.v1`。
+
+## 已知行为说明
+
+- **无视频/纯课件小节**：默认不自动跳过（学习通会提示“当前章节还有任务未完成”）。确认该小节无需处理后，可 `app.nextUnit()` 手动跳过，或设置 `app.configs.autoAdvanceNoVideo = true`。
+- **`AbortError: play() request was interrupted by a call to pause()`**：页面切换步骤时播放器重新初始化导致的短暂中断，脚本会自动恢复，不是视频损坏。
+- **重复日志**：同一页面重复粘贴脚本会叠加监听。脚本会先销毁旧实例再启动新实例，但仍建议刷新后只执行一次。
+- **悬浮球菜单里的“重置进度”**：需要连点两次确认，避免误触。
+- **悬浮球挡住视频/字幕**：直接拖动球到别处（位置会记住）；或点 `×` 收成球，`app.removeHud()` 可彻底移除。
+
+## 开发
+
+```bash
+npm install                   # 仅测试需要（jsdom）
+node scripts/build.mjs        # 构建
+node tests/verify.mjs         # 产物校验（零依赖）
+npm test                      # 构建 + 产物校验 + 单元测试（jsdom / node:test）
+```
+
+如果 `npm test` 在某些沙箱环境报 `spawn EPERM`，可改用：
+
+```bash
+node --test --test-isolation=none tests/deepseek-request.test.mjs tests/local-service.test.mjs tests/player.test.mjs
+```
+
+## DeepSeek 章节测验自动作答
+
+见 [deepseek-console/README.md](deepseek-console/README.md)。它使用同一套播放核心，额外通过本机 `127.0.0.1:37841` 的本地服务调用 DeepSeek；API Key 通过环境变量 / `.env.local` 提供，不会写进脚本文件，也不会改写构建产物。
+
+## 项目来源与致谢
+
+- 本项目基于 [chaolucky18/xuexitongScript](https://github.com/chaolucky18/xuexitongScript) 重构与增强，感谢原作者提供的思路与初始实现。
+- 原仓库未声明开源许可证；本仓库在其基础上做了大规模重构（原生 DOM 播放核心、悬浮球、断点续播、DeepSeek 接口层修复、构建与测试体系等）。如原作者或任何权利人认为本仓库的存在不妥，请联系删除。
+- 本仓库中的代码同样**不建议**用于任何违反平台协议或校规的用途，详见上方[免责声明](#免责声明)。
+
+## 旧文件
+
+`xuexitong.js`、`v2.js`、`README_v2.md`、`ISSUES_REVIEW.md` 为历史版本与评审记录，已不再维护，仅作参考。
