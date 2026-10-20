@@ -67,7 +67,7 @@ tests/
   deepseek-request.test.mjs  DeepSeek 接口层测试
   local-service.test.mjs     本地 DeepSeek 服务测试
 deepseek-console/            DeepSeek 本地服务与 V4 产物
-docs/                        悬浮球截图
+docs/                        截图与图文教程（悬浮球、方式一/方式三步骤图）
 v3_optimized.js              【构建产物】控制台直接执行版
 v3_optimized.user.js         【构建产物】油猴脚本
 ```
@@ -131,6 +131,16 @@ node tests/verify.mjs         # 校验产物与源码同步且语法有效
 | 方式三提示 `本地令牌不匹配` / `尚未写入本地服务令牌` | 粘的是 `xuexitong-console.js`（模板）而不是 `xuexitong-console.ready.js`；或服务重启过，重新复制新的 ready 文件 |
 | 一直卡在纯课件小节 | 学习通会提示有任务未完成，默认不跳过：确认无需处理后 `app.nextUnit()`，或 `app.configs.autoAdvanceNoVideo = true` |
 | 倍速/静音不生效 | 部分课程播放器禁用倍速；V4（方式三）默认静音播放，浏览器自动播放策略要求静音 |
+
+### 图文教程（可保存后转发给别人）
+
+**方式一：控制台粘贴**（30 秒，不用下载仓库）
+
+![方式一图文教程](docs/guide-console.png)
+
+**方式三：DeepSeek 自动答题**
+
+![方式三图文教程](docs/guide-deepseek.png)
 
 ### 常用命令
 
