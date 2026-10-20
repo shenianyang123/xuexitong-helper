@@ -127,6 +127,7 @@ node tests/verify.mjs         # 校验产物与源码同步且语法有效
 | 粘贴后没任何反应 | 确认在**控制台 Console** 而不是 Elements/Network 面板；确认地址是 `/mycourse/studentstudy` 播放页；看 Console 有没有红色报错 |
 | 悬浮球不见了 | 刷新页面重新粘贴；或控制台执行 `app.showHud(true)` |
 | `Warning: Don't paste code...` | 在 Console 手动输入 `allow pasting` 后回车，再粘贴 |
+| 双击 `start-local-service.cmd` 一闪而过 / 报 `'xxx' 不是内部或外部命令` | 早期 ZIP 里的 `.cmd` 换行是 LF，cmd.exe 无法解析（现已修复为 CRLF）。重新下载最新 ZIP；临时办法：在 `deepseek-console` 目录执行 `node deepseek-local.mjs` |
 | 方式三提示 `本地服务不可用` | 黑窗口是否还开着；浏览器弹「允许访问本地网络」时选允许；杀毒软件是否拦了 `127.0.0.1:37841` |
 | 方式三提示 `本地令牌不匹配` / `尚未写入本地服务令牌` | 粘的是 `xuexitong-console.js`（模板）而不是 `xuexitong-console.ready.js`；或服务重启过，重新复制新的 ready 文件 |
 | 一直卡在纯课件小节 | 学习通会提示有任务未完成，默认不跳过：确认无需处理后 `app.nextUnit()`，或 `app.configs.autoAdvanceNoVideo = true` |

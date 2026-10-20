@@ -1,59 +1,59 @@
 @echo off
 chcp 65001 >nul
 setlocal
-title 学习通 DeepSeek 本地服务
+title Xuexitong DeepSeek local service
 cd /d "%~dp0"
 if errorlevel 1 (
-  echo 无法进入脚本目录：%~dp0
+  echo [ERROR] Cannot enter script directory: %~dp0
   goto :failed
 )
 
+rem This file is intentionally ASCII-only: cmd.exe mis-parses multi-byte text when
+rem the code page changes mid-file. Chinese messages are printed by Node instead.
+
 if not exist "deepseek-local.mjs" (
-  echo 缺少 deepseek-local.mjs，请先完整解压整个项目目录再运行。
+  echo [ERROR] deepseek-local.mjs not found. Please extract the whole project folder first.
   goto :failed
 )
 if not exist "deepseek-request.mjs" (
-  echo 缺少 deepseek-request.mjs，请先完整解压整个项目目录再运行。
+  echo [ERROR] deepseek-request.mjs not found. Please extract the whole project folder first.
   goto :failed
 )
 if not exist "xuexitong-console.js" (
-  echo 缺少 xuexitong-console.js，请先在项目根目录执行：node scripts\build.mjs
+  echo [ERROR] xuexitong-console.js not found. Run "node scripts\build.mjs" in the project root.
   goto :failed
 )
 
 set "NODE_EXE=%USERPROFILE%\.cache\codex-runtimes\codex-primary-runtime\dependencies\node\bin\node.exe"
-if not exist "%NODE_EXE%" (
-  set "NODE_EXE="
-  for /f "delims=" %%I in ('where node.exe 2^>nul') do if not defined NODE_EXE set "NODE_EXE=%%I"
-)
+if not exist "%NODE_EXE%" set "NODE_EXE="
+if not defined NODE_EXE for /f "delims=" %%I in ('where node.exe 2^>nul') do if not defined NODE_EXE set "NODE_EXE=%%I"
 if not defined NODE_EXE (
-  echo 未找到 Node.js，请先安装 Node.js（https://nodejs.org）后重试。
+  echo [ERROR] Node.js not found. Install Node.js 20+ from https://nodejs.org and retry.
   goto :failed
 )
 
-rem 访问 api.deepseek.com 需要代理时：优先沿用系统已有的 HTTPS_PROXY；
-rem 否则探测本机 127.0.0.1:7897（Clash/Mihomo 默认端口），可用就自动启用。
+rem Keep an existing HTTPS_PROXY; otherwise probe local 127.0.0.1:7897 (Clash/Mihomo default).
 if defined HTTPS_PROXY goto :proxy_ready
 if defined https_proxy goto :proxy_ready
 powershell -NoProfile -Command "try { $c = New-Object Net.Sockets.TcpClient; $r = $c.BeginConnect('127.0.0.1', 7897, $null, $null); if ($r.AsyncWaitHandle.WaitOne(400) -and $c.Connected) { exit 0 } else { exit 1 } } catch { exit 1 }" >nul 2>&1
 if errorlevel 1 goto :proxy_ready
 set "HTTP_PROXY=http://127.0.0.1:7897"
 set "HTTPS_PROXY=http://127.0.0.1:7897"
-echo 检测到本机代理 127.0.0.1:7897，将用于访问 DeepSeek。
+echo [info] Local proxy 127.0.0.1:7897 detected, will be used for the DeepSeek API.
 :proxy_ready
 set "NODE_USE_ENV_PROXY=1"
 
-echo 正在启动 DeepSeek 本地服务……
+echo Starting local service ... (the messages below are printed by Node.js)
 "%NODE_EXE%" "deepseek-local.mjs"
 set "EXIT_CODE=%ERRORLEVEL%"
 echo.
-echo 本地服务已退出（代码 %EXIT_CODE%）。
-echo 如果上方有报错，请把报错原文发出来。
+echo Local service exited with code %EXIT_CODE%.
+echo If there is an error above, please copy the whole error message.
 pause
 exit /b %EXIT_CODE%
 
 :failed
 echo.
-echo 启动失败，请把上方提示原文发出来。
+echo Failed to start. Please copy the message above.
 pause
 exit /b 1

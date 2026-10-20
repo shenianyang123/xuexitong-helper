@@ -44,7 +44,7 @@
 ## 二、启动本地服务
 
 1. 确认构建产物存在：仓库里已自带 `xuexitong-console.js`；如果你改过 `src/` 源码，在仓库根目录执行 `node scripts/build.mjs` 重新生成；
-2. 双击本目录的 **`start-local-service.cmd`**（Windows 批处理，标题为「学习通 DeepSeek 本地服务」）；
+2. 双击本目录的 **`start-local-service.cmd`**（Windows 批处理，窗口标题为 `Xuexitong DeepSeek local service`；批处理本身只输出英文提示，中文提示由 Node 打印）；
 3. 窗口会显示：API Key 校验结果、模型名、以及**生成的 `xuexitong-console.ready.js` 路径**；
 4. **保持这个黑窗口打开**，直到课程刷完。
 
@@ -97,6 +97,7 @@ app.configs.autoAdvanceNoVideo = true; // 允许跳过无视频小节
 | 整页跳转后脚本没恢复 | 允许 `mooc1.chaoxing.com` 打开弹出窗口；或在新页面重新粘贴脚本 |
 | 出现黄色“已在调试程序中暂停” | 在开发者工具按 `F8` 恢复执行，并检查“遇到异常时暂停”是否开启 |
 | `Uncaught SyntaxError: missing )` | 粘贴内容被截断，重新从文件复制（末尾应为 `})();`） |
+| 双击 `start-local-service.cmd` 一闪而过，或窗口里报 `'xxx' 不是内部或外部命令` | 早期 ZIP 里的 `.cmd` 换行是 LF，cmd.exe 无法解析（现已改为 CRLF，重新下载最新 ZIP 即可）。临时办法：在 `deepseek-console` 目录里执行 `node deepseek-local.mjs` |
 
 页面自带的 `work-css-tpl.cssx 404`、`highlight.js deprecated`、`JQMIGRATE` 提示与脚本无关。
 
