@@ -18,8 +18,17 @@ pnpm-lock.yaml
 
 # 本地服务运行时生成的文件（含真实令牌/密钥，禁止提交）
 deepseek-console/xuexitong-console.ready.js
+deepseek-console/xuexitong-console.ready.user.js
 deepseek-console/.env.local
 deepseek-console/.local-token
+
+# 任意层级下的运行时文件（例如本机解压副本里也会有），同样禁止提交
+**/.local-token
+**/xuexitong-console.ready.js
+**/xuexitong-console.ready.user.js
+
+# 本机解压出来的仓库副本（内含真实 Key/令牌，不进仓库）
+/1/
 
 # 本地 npm 缓存（沙箱环境需要）
 .npm-cache

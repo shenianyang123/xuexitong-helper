@@ -9,10 +9,12 @@
  *   v3_optimized.js                          —— 浏览器控制台直接粘贴执行（V3）
  *   v3_optimized.user.js                     —— 油猴脚本（V3 + 元数据头）
  *   deepseek-console/xuexitong-console.js    —— Edge 控制台版（V4，含 DeepSeek 章节测验）
+ *   deepseek-console/xuexitong-console.user.js —— 油猴版（V4 + 元数据头，自动注入）
  *
- * 说明：xuexitong-console.js 中的 LOCAL_TOKEN 固定保留为占位符 __LOCAL_TOKEN__；
- * 本地服务启动时会额外生成 xuexitong-console.ready.js（已写入真实令牌），
- * 构建脚本永远不会修改或覆盖它。
+ * 说明：两份 console 产物中的 LOCAL_TOKEN 固定保留为占位符 __LOCAL_TOKEN__；
+ * 本地服务启动时会额外生成 xuexitong-console.ready.js 与
+ * xuexitong-console.ready.user.js（已写入真实令牌），
+ * 构建脚本永远不会修改或覆盖它们。
  */
 
 import { readFileSync, writeFileSync, mkdirSync, existsSync } from 'node:fs';
@@ -22,7 +24,7 @@ import { fileURLToPath } from 'node:url';
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const SRC_DIR = resolve(ROOT, 'src');
 
-export const VERSION = '3.4.0';
+export const VERSION = '3.5.0';
 
 const INCLUDE_PATTERN = /^[ \t]*\/\* @@INCLUDE:([A-Za-z0-9._-]+)@@ \*\/[ \t]*$/gm;
 
@@ -35,6 +37,23 @@ const USER_SCRIPT_METADATA = `// ==UserScript==
 // @match        *://mooc1.chaoxing.com/mycourse/studentstudy*
 // @match        *://*.chaoxing.com/mycourse/studentstudy*
 // @match        *://*.chaoxing.com/mooc2-ans/mycourse/studentstudy*
+// @run-at       document-idle
+// @grant        none
+// @noframes
+// ==/UserScript==
+
+`;
+
+const CONSOLE_USER_METADATA = `// ==UserScript==
+// @name         学习通自动刷课助手（DeepSeek 版）
+// @namespace    local.codex.xuexitong
+// @version      ${VERSION}
+// @description  自动播放、多视频串联、断点续播、悬浮球控制，并可用本地服务自动作答章节测验
+// @author       Codex
+// @match        *://mooc1.chaoxing.com/mycourse/studentstudy*
+// @match        *://mooc1-1.chaoxing.com/mycourse/studentstudy*
+// @match        *://mooc2-ans.chaoxing.com/mycourse/studentstudy*
+// @match        *://*.chaoxing.com/mycourse/studentstudy*
 // @run-at       document-idle
 // @grant        none
 // @noframes
@@ -94,12 +113,19 @@ export function buildConsole() {
     return output;
 }
 
+/** 生成 deepseek-console/xuexitong-console.user.js 内容（油猴版，仍含令牌占位符）。 */
+export function buildConsoleUserScript() {
+    const payload = buildConsole();
+    return `${CONSOLE_USER_METADATA}${payload}`;
+}
+
 /** 产物清单：路径 → 生成函数。 */
 export function artifacts() {
     return new Map([
         [resolve(ROOT, 'v3_optimized.js'), buildV3],
         [resolve(ROOT, 'v3_optimized.user.js'), buildUserScript],
         [resolve(ROOT, 'deepseek-console/xuexitong-console.js'), buildConsole],
+        [resolve(ROOT, 'deepseek-console/xuexitong-console.user.js'), buildConsoleUserScript],
     ]);
 }
 

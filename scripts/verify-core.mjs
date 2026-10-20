@@ -83,6 +83,29 @@ export function verifyArtifacts() {
         }
     }
 
+    const consoleUserPath = resolve(ROOT, 'deepseek-console/xuexitong-console.user.js');
+    if (existsSync(consoleUserPath)) {
+        const content = readFileSync(consoleUserPath, 'utf8');
+        if (!content.startsWith('// ==UserScript==')) {
+            problems.push('xuexitong-console.user.js：文件必须以 // ==UserScript== 开头');
+        }
+        const index = content.indexOf(USER_SCRIPT_MARKER);
+        if (index < 0) {
+            problems.push('xuexitong-console.user.js：缺少 // ==/UserScript== 元数据块');
+        } else {
+            const payload = content.slice(index + USER_SCRIPT_MARKER.length);
+            if (!/\(function xuexitongMain\s*\(/.test(payload)) {
+                problems.push('xuexitong-console.user.js：负载缺少具名函数 xuexitongMain');
+            }
+            if (!/__LOCAL_TOKEN__/.test(payload)) {
+                problems.push('xuexitong-console.user.js：负载缺少令牌占位符 __LOCAL_TOKEN__');
+            }
+        }
+        if (!/@match\s+\*:\/\/mooc1\.chaoxing\.com\/mycourse\/studentstudy\*/.test(content)) {
+            problems.push('xuexitong-console.user.js：缺少 studentstudy 页面 @match');
+        }
+    }
+
     if (problems.length) {
         throw new Error(`产物校验失败：\n- ${problems.join('\n- ')}`);
     }

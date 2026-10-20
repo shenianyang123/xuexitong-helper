@@ -2,7 +2,8 @@
 
 在 [V3 播放核心](../README.md) 的基础上，增加“章节测验自动作答”：识别测验题目 → 调用 DeepSeek → 自动选择并提交。
 
-- 不需要 Tampermonkey；
+- **推荐用法是全自动**：本地服务开机自启（无黑窗口）+ Tampermonkey 油猴脚本自动注入，装好后每次只需打开学习通网页；
+- 不想装扩展时也可以手动粘贴（下面是方式 B）；
 - API Key **不写入脚本文件**，通过环境变量或 `.env.local` 提供；
 - 本地服务只监听 `127.0.0.1:37841`，页面脚本通过短期令牌鉴权。
 
@@ -12,7 +13,13 @@
 
 1. 打开仓库页 https://github.com/shenianyang123/xuexitong-helper → 右上角 **Code → Download ZIP**，解压到任意目录（会 git 的话直接 `git clone`）；
 2. 本机需要 **Node.js 20+**（`node -v` 能输出版本号即可）；
-3. 仓库里**不含** `xuexitong-console.ready.js`——它由下面的服务启动时在你的电脑上生成（内含本机令牌，不应提交到仓库）。
+3. 仓库里**不含** `xuexitong-console.ready.js` / `xuexitong-console.ready.user.js`——它们由下面的服务启动时在你的电脑上生成（内含本机令牌，不应提交到仓库）。
+
+> **ZIP 下载的要注意**：Windows 会给解压出来的文件打上“来自 Internet”标记。不解除的话，双击/自启时会弹「无法验证发布者 / 打开文件 - 安全警告」；开机自启是隐藏窗口运行的，这个框你看不到，会表现为“自启没生效”。在解压后的项目目录里右键 → 在终端中打开 → 执行一次：
+>
+> ```powershell
+> Get-ChildItem -Recurse -File | Unblock-File
+> ```
 
 ## 一、准备 API Key（只需一次）
 
@@ -43,25 +50,39 @@
 
 ## 二、启动本地服务
 
-1. 确认构建产物存在：仓库里已自带 `xuexitong-console.js`；如果你改过 `src/` 源码，在仓库根目录执行 `node scripts/build.mjs` 重新生成；
+1. 确认构建产物存在：仓库里已自带 `xuexitong-console.js`、`xuexitong-console.user.js`；如果你改过 `src/` 源码，在仓库根目录执行 `node scripts/build.mjs` 重新生成；
 2. 双击本目录的 **`start-local-service.cmd`**（Windows 批处理，窗口标题为 `Xuexitong DeepSeek local service`；批处理本身只输出英文提示，中文提示由 Node 打印）；
 3. 窗口会显示：API Key 校验结果、模型名、以及**生成的 `xuexitong-console.ready.js` 路径**；
-4. **保持这个黑窗口打开**，直到课程刷完。
+4. 首次使用建议再双击 **`install-autostart.cmd`**：把服务装成开机自启（后台运行、无黑窗口，日志追加到本目录 `service.log`）。装好后**不用再双击 cmd**；卸载用 `uninstall-autostart.cmd`，查状态用 `node autostart.mjs status`；
+5. 如果不想装自启：保持黑窗口开着，直到课程刷完。
+
+> 端口被占用（提示 `端口 37841 已被占用`）通常说明服务已经在跑（多半是自启那个），不用重复启动。
 
 服务启动时会发生这些事：
 
 - 读取/输入 API Key，并用免费的 `GET /models` 校验一次（失败只警告，不阻止启动）；
 - 生成/复用 `.local-token`（所以重启服务后令牌不变，不需要重新复制脚本）；
-- 根据构建产物 `xuexitong-console.js` 生成 `xuexitong-console.ready.js`（写入真实令牌）；
-- **不会修改 `xuexitong-console.js` 本身**。
+- 根据构建产物生成 `xuexitong-console.ready.js` 与 `xuexitong-console.ready.user.js`（写入真实令牌）；
+- **不会修改构建产物本身**。
 
-## 三、在课程页执行脚本
+## 三、用起来（二选一）
+
+### 方式 A：全自动（推荐，一次配置，以后零操作）
+
+1. 浏览器安装 **Tampermonkey（篡改猴）** 扩展（Edge 商店 / Chrome 商店都有）；
+2. 浏览器地址栏打开 `http://127.0.0.1:37841/xuexitong-console.ready.user.js`（端口被 `XUEXITONG_PORT` 改过就用实际端口）。本地服务会实时生成**带本机令牌**的油猴脚本，Tampermonkey 弹出安装页 → 点「安装」；
+3. **关键一步**：打开浏览器「扩展」页 → Tampermonkey 的「详情」→ 打开 **「允许用户脚本」** 开关。新版 Chrome / Edge 是 MV3，**不打开这个开关，油猴脚本会静默不执行**（页面毫无反应，最常见的问题）；
+4. 装好后打开/刷新学习通课程播放页，右下角出现悬浮球即自动运行。服务装了开机自启后，以后就只剩“打开网页”这一步。
+
+> 装的是 `xuexitong-console.ready.user.js`（带令牌）、不是仓库里的 `xuexitong-console.user.js`（模板）。令牌变了重新打开那个网址装一次即可。
+
+### 方式 B：手动粘贴（不装扩展）
 
 1. 关掉之前安装的学习通油猴脚本，避免两边同时操作页面；
 2. Edge 打开学习通课程播放页（`.../mycourse/studentstudy?...`）；
 3. `F12` → Console，粘贴 **`xuexitong-console.ready.js`** 的全文，回车（新版 Edge/Chrome 若提示 `Don't paste code`，先在控制台手动输入 `allow pasting` 回车再粘贴）；
 4. 脚本会打开一个小的“学习通自动任务辅助窗口”，请保持打开：它在“下一节”触发整页跳转后自动重新注入脚本；
-5. 之后可以关闭开发者工具，返回课程页。
+5. 之后可以关闭开发者工具，返回课程页；**本地服务窗口要保持开着**。
 
 如果看到“尚未写入本地服务令牌”，说明执行的是 `xuexitong-console.js` 而不是 `.ready.js`。
 
@@ -89,7 +110,9 @@ app.configs.autoAdvanceNoVideo = true; // 允许跳过无视频小节
 
 | 现象 | 处理 |
 | --- | --- |
-| `DeepSeek 本地服务不可用` | 检查黑窗口是否还在运行；浏览器提示“允许访问本地网络”时选择允许 |
+| `DeepSeek 本地服务不可用` | 检查本地服务是否在跑（装了自启：看 `service.log`；手动启动：看黑窗口是否还开着）；浏览器提示“允许访问本地网络”时选择允许 |
+| 装了油猴脚本但页面上一点反应都没有 | 浏览器「扩展」页 → Tampermonkey「详情」→ 打开 **「允许用户脚本」**（MV3 必须，不开就静默不执行）；再确认 `http://127.0.0.1:37841/health` 能返回 JSON |
+| 开机自启没生效 / 弹「无法验证发布者」 | ZIP 文件带“来自 Internet”标记：在项目目录执行 `Get-ChildItem -Recurse -File \| Unblock-File`，再重新双击 `install-autostart.cmd`；然后看 `service.log` 有没有启动记录 |
 | `HTTP 401` / `API Key 无效` | 重新设置 `DEEPSEEK_API_KEY`，注意不要带引号或空格 |
 | `HTTP 402` / `余额不足` | 到 platform.deepseek.com 充值 |
 | `输出达到长度上限` | 调大 `DEEPSEEK_MAX_TOKENS`，或减少一次提交的题目数量 |

@@ -9,9 +9,10 @@
  *   3) 交互输入（输入内容不会显示）
  *
  * 令牌机制：
- *   每次启动生成/复用 .local-token，并据此生成 xuexitong-console.ready.js。
- *   xuexitong-console.js 是构建产物，本服务**永不修改它**；
- *   你只需要把 ready 文件的内容粘贴到学习通页面的控制台。
+ *   每次启动复用 .local-token，并据此生成两份 ready 文件：
+ *     xuexitong-console.ready.js       —— 粘贴到浏览器控制台（手动方式）
+ *     xuexitong-console.ready.user.js  —— 导入油猴/篡改猴（自动注入方式，推荐）
+ *   xuexitong-console.js / .user.js 是构建产物，本服务**永不修改它们**。
  */
 
 import { createServer } from 'node:http';
@@ -27,7 +28,9 @@ const DEFAULT_PORT = 37841;
 const PORT = Number.parseInt(process.env.XUEXITONG_PORT || String(DEFAULT_PORT), 10);
 const DIR = fileURLToPath(new URL('.', import.meta.url));
 const scriptPath = resolve(DIR, 'xuexitong-console.js');
+const userScriptPath = resolve(DIR, 'xuexitong-console.user.js');
 const readyPath = resolve(DIR, 'xuexitong-console.ready.js');
+const readyUserPath = resolve(DIR, 'xuexitong-console.ready.user.js');
 const envPath = resolve(DIR, '.env.local');
 const tokenPath = resolve(DIR, '.local-token');
 
@@ -105,6 +108,9 @@ async function resolveApiKey() {
         console.log(`已从 ${'.env.local'} 读取 API Key`);
         return fromFile;
     }
+    if (!process.stdin.isTTY) {
+        throw new Error('未找到 DeepSeek API Key：请先双击 start-local-service.cmd 运行一次并输入 Key（会保存到 .env.local）');
+    }
     const typed = await promptApiKey();
     if (!typed) throw new Error('未输入 DeepSeek API Key');
     if (typed.startsWith('sk-') || typed.length >= 20) {
@@ -178,7 +184,13 @@ function writeReadyScript(token) {
     const source = readFileSync(scriptPath, 'utf8');
     const ready = applyToken(source, token);
     writeFileSync(readyPath, ready, 'utf8');
-    return readyPath;
+    const result = { console: readyPath, userscript: null };
+    if (existsSync(userScriptPath)) {
+        const userSource = readFileSync(userScriptPath, 'utf8');
+        writeFileSync(readyUserPath, applyToken(userSource, token), 'utf8');
+        result.userscript = readyUserPath;
+    }
+    return result;
 }
 
 /* ------------------------------- HTTP -------------------------------- */
@@ -210,9 +222,36 @@ function describeError(error) {
 
 let busy = false;
 
+const USERSCRIPT_ROUTES = new Set(['/userscript', '/userscript.user.js', '/xuexitong-console.ready.user.js']);
+
+/** 供浏览器直接打开的油猴安装地址（Tampermonkey 会自动拦截并弹出安装页）。 */
+export function userscriptInstallUrl(port = PORT) {
+    return `http://127.0.0.1:${port}/xuexitong-console.ready.user.js`;
+}
+
 export function createApp(apiKey, token) {
     return createServer(async (req, res) => {
         const origin = req.headers.origin;
+        // 油猴安装地址：浏览器地址栏直接打开，没有 Origin 头，也不需要令牌。
+        const pathName = String(req.url || '').split('?')[0];
+        if (req.method === 'GET' && USERSCRIPT_ROUTES.has(pathName)) {
+            try {
+                if (!existsSync(userScriptPath)) {
+                    throw new Error('缺少 deepseek-console/xuexitong-console.user.js，请先在项目根目录运行 node scripts/build.mjs');
+                }
+                const body = applyToken(readFileSync(userScriptPath, 'utf8'), token);
+                writeFileSync(readyUserPath, body, 'utf8');
+                res.writeHead(200, {
+                    'Content-Type': 'text/plain; charset=utf-8',
+                    'Cache-Control': 'no-store',
+                });
+                res.end(body);
+            } catch (error) {
+                res.writeHead(500, { 'Content-Type': 'text/plain; charset=utf-8' });
+                res.end(describeError(error));
+            }
+            return;
+        }
         if (!allowedOrigin(origin)) {
             res.writeHead(403, { 'Content-Type': 'text/plain; charset=utf-8' });
             res.end('Origin not allowed');
@@ -283,12 +322,12 @@ export async function main() {
     console.log(`DeepSeek 模型：${MODEL}${IS_REASONER ? '（推理模型，已关闭 JSON 模式）' : ''}`);
     console.log(`接口地址：${API_BASE_URL}`);
 
-    const readyFile = writeReadyScript(token);
+    const readyFiles = writeReadyScript(token);
     const server = createApp(apiKey, token);
 
     server.on('error', (error) => {
         if (error.code === 'EADDRINUSE') {
-            console.error(`端口 ${PORT} 已被占用：可能已经有一个本地服务在运行，请关闭旧窗口后重试。`);
+            console.error(`端口 ${PORT} 已被占用：可能已经有一个本地服务在运行（例如开机自启的那个），无需重复启动。`);
         } else {
             console.error('本地服务启动失败：', error);
         }
@@ -298,12 +337,26 @@ export async function main() {
     server.listen(PORT, '127.0.0.1', () => {
         console.log('');
         console.log(`本地服务已启动：http://127.0.0.1:${PORT}`);
-        console.log(`控制台脚本（含本次令牌）：${readyFile}`);
         console.log('');
-        console.log('使用方法：');
-        console.log('  1) 打开学习通课程播放页；');
-        console.log('  2) 打开 Edge 控制台（F12），粘贴 xuexitong-console.ready.js 的全部内容并回车；');
+        console.log('方式 A（推荐，装一次就全自动）：');
+        console.log('  1) 在浏览器里安装 Tampermonkey（篡改猴）扩展；');
+        if (readyFiles.userscript) {
+            console.log(`  2) 在浏览器地址栏打开：${userscriptInstallUrl()}`);
+            console.log('     （Tampermonkey 会弹出安装页，点「安装」即可）');
+        } else {
+            console.log('  2) 缺少 xuexitong-console.user.js，请先在项目根目录运行 node scripts/build.mjs；');
+        }
+        console.log('  3) 只做一次：打开浏览器「扩展」页 → Tampermonkey 的「详情」');
+        console.log('     把「允许用户脚本」开关打开（Edge / Chrome 新版必须，否则油猴脚本不会执行）；');
+        console.log('  4) 以后每次打开学习通播放页都会自动运行，无需任何操作。');
+        console.log('');
+        console.log('方式 B（不装扩展，手动粘贴）：');
+        console.log(`  1) 打开 ${readyFiles.console}，复制全部内容；`);
+        console.log('  2) 在学习通播放页按 F12，切到「控制台」，粘贴并回车；');
         console.log('  3) 保持本窗口打开，直到课程刷完。');
+        console.log('');
+        console.log('首次使用建议先双击 install-autostart.cmd：让本服务开机自动在后台运行，');
+        console.log('以后就只剩「打开学习通网页」一步。卸载用 uninstall-autostart.cmd。');
         console.log('');
         console.log('API Key 不会写入构建产物；关闭本窗口即停止服务。');
     });

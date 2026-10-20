@@ -39,7 +39,7 @@
 | **课程导航** | 自动从「学习目标」切到「视频」步骤；视频播完自动切下一节 / 下一章；纯课件小节默认不跳过（可配置） |
 | **章节测验（基础版）** | 遇到章节测验步骤时自动跳过/放行，不阻塞视频推进 |
 | **章节测验（DeepSeek 版）** | 自动识别题目、请求本地 DeepSeek 服务作答、按题型选择选项、提交并进入下一节；可选，见 [deepseek-console/README.md](deepseek-console/README.md) |
-| **零依赖构建 + 测试** | `src/` 单份源码内联生成三份产物，构建产物可校验一致性；播放核心有 jsdom 单元测试，接口层与本地服务有独立测试（共 31 个用例） |
+| **零依赖构建 + 测试** | `src/` 单份源码内联生成四份产物，构建产物可校验一致性；播放核心有 jsdom 单元测试，接口层、本地服务、开机自启各有独立测试（共 34 个用例） |
 
 ### 兼容性
 
@@ -66,15 +66,24 @@ tests/
   player.test.mjs            播放核心的 jsdom 测试
   deepseek-request.test.mjs  DeepSeek 接口层测试
   local-service.test.mjs     本地 DeepSeek 服务测试
+  autostart.test.mjs         开机自启脚本测试
 deepseek-console/            DeepSeek 本地服务与 V4 产物
+  deepseek-local.mjs         本地 HTTP 服务（Key 读取、令牌、/answer）
+  deepseek-request.mjs       调用 DeepSeek 官方接口（重试/错误分类）
+  autostart.mjs              开机自启安装/卸载/状态（写「启动」文件夹的 VBS）
+  start-local-service.cmd    启动服务（--background 为隐藏自启模式）
+  install-autostart.cmd      一键装开机自启
+  uninstall-autostart.cmd    一键卸载开机自启
 docs/                        截图与图文教程（悬浮球、方式一/方式三步骤图）
 v3_optimized.js              【构建产物】控制台直接执行版
 v3_optimized.user.js         【构建产物】油猴脚本
+deepseek-console/xuexitong-console.js       【构建产物】V4 控制台/模板
+deepseek-console/xuexitong-console.user.js 【构建产物】V4 油猴脚本（含实时令牌由本地服务生成）
 ```
 
-`v3_optimized.js`、`v3_optimized.user.js`、`deepseek-console/xuexitong-console.js` **都是构建产物，不要直接改**；改源码后重新构建即可。
+`v3_optimized.js`、`v3_optimized.user.js`、`deepseek-console/xuexitong-console.js`、`deepseek-console/xuexitong-console.user.js` **都是构建产物，不要直接改**；改源码后重新构建即可。
 
-`deepseek-console/xuexitong-console.ready.js`、`.env.local`、`.local-token` 是**本机运行时生成的文件**（含本机令牌/Key），已被 `.gitignore` 忽略，不会出现在仓库里。
+`deepseek-console/xuexitong-console.ready.js`、`xuexitong-console.ready.user.js`、`.env.local`、`.local-token` 是**本机运行时生成的文件**（含本机令牌/Key），已被 `.gitignore` 忽略，不会出现在仓库里。
 
 ## 构建
 
@@ -89,7 +98,7 @@ node tests/verify.mjs         # 校验产物与源码同步且语法有效
 
 ## 使用方法
 
-三种方式按需选一种即可：**只想要自动播放 → 方式一（连仓库都不用下载，复制一个文件即可）**；长期使用 → 方式二；要自动答章节测验 → 方式三。
+三种方式按需选一种即可：**只想要自动播放 → 方式一（连仓库都不用下载，复制一个文件即可）**；长期自动播放 → 方式二；要自动答章节测验、并且以后完全零操作 → 方式三。
 
 ### 方式一：浏览器控制台（最快，只要自动播放）
 
@@ -107,16 +116,37 @@ node tests/verify.mjs         # 校验产物与源码同步且语法有效
 2. 打开 [v3_optimized.user.js](https://github.com/shenianyang123/xuexitong-helper/blob/main/v3_optimized.user.js) 点 **Raw**，Tampermonkey 会弹出安装页 → 安装（也可新建脚本后粘贴全文，元数据头已包含）；
 3. 打开/刷新学习通播放页，右下角出现悬浮球即生效。
 
-### 方式三：DeepSeek 章节测验自动作答（可选）
+> Edge / Chrome 新版（MV3）装完扩展后，如果脚本毫无反应：打开浏览器「扩展」页 → Tampermonkey「详情」→ 打开 **「允许用户脚本」** 开关。不打开脚本会静默不执行。
 
-> 这个版本需要在本机跑一个 Node.js 本地服务，所以**要把整个项目下载下来**。仓库里**不含** `xuexitong-console.ready.js`，它是启动服务时在你的电脑上生成的（内含本机令牌，不应进仓库）。
+### 方式三：全自动（推荐）——DeepSeek 自动答题 + 网页自动注入 + 开机自启
+
+> **一次配置，以后零操作**：装好之后每次打开学习通课程播放页就自动接管（视频自动播放/续播、章节测验自动作答），本地服务开机后自己在后台跑，不用再双击任何文件。
+>
+> 这个方式需要在本机跑一个 Node.js 本地服务，所以**要把整个项目下载下来**。仓库里**不含** `xuexitong-console.ready.js` / `xuexitong-console.ready.user.js`，它们是启动服务时在你的电脑上生成的（内含本机令牌，不应进仓库）。
+
+**第一步：装本地服务（只做一次）**
 
 1. 准备一个 [DeepSeek API Key](https://platform.deepseek.com/)（需自己有余额）；
-2. 下载项目：本页右上角 **Code → Download ZIP** 解压（会 git 的话 `git clone https://github.com/shenianyang123/xuexitong-helper.git`）。本机需已安装 Node.js 20+；
-3. 双击 `deepseek-console/start-local-service.cmd`（首次会提示输入 Key，输入时不显示是正常的，Key 只存在本机）；
-4. 窗口里会打印生成的 `deepseek-console/xuexitong-console.ready.js` 路径，保持这个黑色命令行窗口开着；
-5. 学习通播放页 `F12` → Console → 粘贴 `xuexitong-console.ready.js` 全文（同样可能需要先输 `allow pasting`）；
-6. 弹出的「学习通自动任务辅助窗口」不要关，右下角出现悬浮球即成功。
+2. 本页右上角 **Code → Download ZIP** 解压（会 git 的话 `git clone https://github.com/shenianyang123/xuexitong-helper.git`）。本机需已安装 Node.js 20+；
+3. **解除 Windows 的“来自 Internet”标记**（ZIP 下载的文件默认带锁，不解除会弹「无法验证发布者」/「打开文件 - 安全警告」；开机自启是隐藏窗口运行的，这个框你看不到，会表现为“自启没生效”）。在解压出来的文件夹里右键 → 在终端中打开 → 执行：
+   ```powershell
+   Get-ChildItem -Recurse -File | Unblock-File
+   ```
+   （或逐个右键文件 → 属性 → 勾「解除锁定」→ 确定）
+4. 双击 `deepseek-console/start-local-service.cmd`（首次会提示输入 Key，输入时不显示是正常的，Key 只存在本机 `.env.local`）；
+5. 双击 `deepseek-console/install-autostart.cmd`：把服务装成**开机自启**（后台运行、没有黑窗口，日志写 `deepseek-console/service.log`）。之后不必再开黑窗口；卸载用 `uninstall-autostart.cmd`，查状态用 `node autostart.mjs status`。
+
+**第二步：装油猴脚本（只做一次）**
+
+6. 浏览器安装 **Tampermonkey（篡改猴）** 扩展；
+7. 浏览器地址栏打开 `http://127.0.0.1:37841/xuexitong-console.ready.user.js`（本地服务会实时生成带本机令牌的油猴脚本）→ Tampermonkey 弹出安装页 → 点「安装」；
+8. **关键一步**：打开浏览器「扩展」页 → Tampermonkey 的「详情」→ 打开 **「允许用户脚本」** 开关。新版 Chrome / Edge 是 MV3，**不打开这个开关油猴脚本会静默不执行**（页面毫无反应，最常踩的坑）。
+
+**第三步：日常使用（零操作）**
+
+9. 以后打开/刷新任意学习通课程播放页，右下角出现悬浮球即已自动运行。
+
+**不想装油猴 / 不想装自启？手动版**：双击 `start-local-service.cmd` 并保持黑窗口开着 → 播放页 `F12` → Console → 粘贴 `deepseek-console/xuexitong-console.ready.js` 全文（可能需要先输 `allow pasting`）。弹出的「学习通自动任务辅助窗口」不要关。
 
 详见 [deepseek-console/README.md](deepseek-console/README.md)。
 
@@ -128,8 +158,12 @@ node tests/verify.mjs         # 校验产物与源码同步且语法有效
 | 悬浮球不见了 | 刷新页面重新粘贴；或控制台执行 `app.showHud(true)` |
 | `Warning: Don't paste code...` | 在 Console 手动输入 `allow pasting` 后回车，再粘贴 |
 | 双击 `start-local-service.cmd` 一闪而过 / 报 `'xxx' 不是内部或外部命令` | 早期 ZIP 里的 `.cmd` 换行是 LF，cmd.exe 无法解析（现已修复为 CRLF）。重新下载最新 ZIP；临时办法：在 `deepseek-console` 目录执行 `node deepseek-local.mjs` |
-| 方式三提示 `本地服务不可用` | 黑窗口是否还开着；浏览器弹「允许访问本地网络」时选允许；杀毒软件是否拦了 `127.0.0.1:37841` |
-| 方式三提示 `本地令牌不匹配` / `尚未写入本地服务令牌` | 粘的是 `xuexitong-console.js`（模板）而不是 `xuexitong-console.ready.js`；或服务重启过，重新复制新的 ready 文件 |
+| 方式三提示 `本地服务不可用` | 黑窗口是否还开着（或开机自启是否生效：看 `deepseek-console/service.log`）；浏览器弹「允许访问本地网络」时选允许；杀毒软件是否拦了 `127.0.0.1:37841` |
+| 方式三提示 `本地令牌不匹配` / `尚未写入本地服务令牌` | 粘的是 `xuexitong-console.js`（模板）而不是 `xuexitong-console.ready.js`；或服务重启过，重新复制新的 ready 文件（用油猴全自动则自动更新，不会碰到这个问题） |
+| 装了油猴脚本但页面上毫无反应（没有悬浮球） | ① 浏览器「扩展」页 → Tampermonkey「详情」→ 打开 **「允许用户脚本」**（MV3 必须）；② 确认本地服务在跑：浏览器打开 `http://127.0.0.1:37841/health` 应返回 JSON，不通就看 `deepseek-console/service.log` |
+| 开机后本地服务没起来 / 自启看起来失效 | 多半是 ZIP 文件带「来自 Internet」标记，隐藏窗口下的「无法验证发布者」弹框你看不到：在解压目录执行 `Get-ChildItem -Recurse -File \| Unblock-File`，再重新双击 `install-autostart.cmd` |
+| 每次都要手动粘贴 ready.js，嫌麻烦 | 改成油猴全自动：装 Tampermonkey → 打开 `http://127.0.0.1:37841/xuexitong-console.ready.user.js` 安装 → 打开「允许用户脚本」→ 双击 `install-autostart.cmd`。以后只需打开学习通网页 |
+| 端口 `37841` 已被占用 | 说明服务已经在运行（多半是开机自启那个），不用再双击 cmd，直接打开学习通页面即可 |
 | 一直卡在纯课件小节 | 学习通会提示有任务未完成，默认不跳过：确认无需处理后 `app.nextUnit()`，或 `app.configs.autoAdvanceNoVideo = true` |
 | 倍速/静音不生效 | 部分课程播放器禁用倍速；V4（方式三）默认静音播放，浏览器自动播放策略要求静音 |
 
@@ -139,7 +173,7 @@ node tests/verify.mjs         # 校验产物与源码同步且语法有效
 
 ![方式一图文教程](docs/guide-console.png)
 
-**方式三：DeepSeek 自动答题**
+**方式三：全自动（DeepSeek 自动答题 + 油猴自动注入）**
 
 ![方式三图文教程](docs/guide-deepseek.png)
 
