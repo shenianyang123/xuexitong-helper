@@ -40,8 +40,8 @@
 | **新版课程页适配** | 学习通新版播放页（`/mooc-ans/mycourse/studentstudy`，没有老版的 `#coursetree`）也能解析目录：优先读 `#coursetree`，找不到时从 `a[href*="getTeacherAjax"]` 的小节链接重建「章节 → 小节」结构，断点续播/多段接力/已完成节数照常工作 |
 | **倍速锁定** | 部分播放器会自己把 `playbackRate` 改回去；脚本会按设置的倍速改回来，并在日志里记「播放器尝试把倍速改回 X 倍，已拦截」 |
 | **章节测验（基础版）** | 遇到章节测验步骤时自动跳过/放行，不阻塞视频推进 |
-| **章节测验（DeepSeek 版）** | 自动识别题目、请求本地 DeepSeek 服务作答、按题型选择选项、提交并进入下一节；可选，见 [deepseek-console/README.md](deepseek-console/README.md) |
-| **零依赖构建 + 测试** | `src/` 单份源码内联生成四份产物，构建产物可校验一致性；播放核心有 jsdom 单元测试（含新版链接式目录的用例），接口层、本地服务、开机自启各有独立测试（共 39 个用例） |
+| **章节测验（DeepSeek 版）** | 自动识别题目、请求本地 DeepSeek 服务作答、按题型选择选项、提交并进入下一节；新版页面选项没有 A/B 字母时（radio「对 / 错」、checkbox 多选）按 `input` 分组识别，勾选时直接点原生 `input` 并以 `input.checked` 校验；可选，见 [deepseek-console/README.md](deepseek-console/README.md) |
+| **零依赖构建 + 测试** | `src/` 单份源码内联生成四份产物，构建产物可校验一致性；播放核心有 jsdom 单元测试（含新版链接式目录的用例），章节测验解析/勾选、接口层、本地服务、开机自启各有独立测试（共 44 个用例） |
 
 ### 兼容性
 
@@ -66,6 +66,7 @@ scripts/
 tests/
   verify.mjs                 产物校验入口
   player.test.mjs            播放核心的 jsdom 测试
+  quiz-extract.test.mjs      章节测验题目识别与选项勾选的 jsdom 测试
   deepseek-request.test.mjs  DeepSeek 接口层测试
   local-service.test.mjs     本地 DeepSeek 服务测试
   autostart.test.mjs         开机自启脚本测试
@@ -168,6 +169,8 @@ node tests/verify.mjs         # 校验产物与源码同步且语法有效
 | 有新版本时 Tampermonkey 的「更新用户脚本」页点了没反应 | 页面上那排按钮顺序是「更新 / 取消 / 禁用更新」，最左边那个才是**更新**；点错会点到「禁用更新」（脚本就被停用了）。确认装对了版本：重开 `.../xuexitong-console.ready.user.js`，标题下面「已安装版本」应等于脚本标题里的版本号 |
 | 悬浮面板里「章节」显示「未定位到目录」，已完成 0 节 | 页面目录结构与脚本预期不符。**3.5.4+** 已支持新版 `/mooc-ans` 链接式目录（`a[href*="getTeacherAjax"]`）；升级后刷新即可。仍不行时加 `?xxtdiaghud=1` 把面板底部的 `DIAG {...}` 那一行截图反馈 |
 | 倍速选了 2.0x，视频还是原速 / 自己跳回 1x | 部分播放器会主动改回倍速。脚本已做倍速锁定（日志会显示「播放器尝试把倍速改回 X 倍，已拦截」）；若日志一直拦不住，用 `?xxtrate=2` 参数强制一次，再在面板里确认一下当前倍速 |
+| 悬浮面板显示「章节测验自动作答中」但题目一直不动 | 新版 `/mooc-ans` 测验页的选项是 radio/checkbox、文案只有「对 / 错」没有 A/B 字母，旧版只按字母找选项会识别不到。**3.5.6+** 已改为按 `input` 分组识别并直接点原生 `input` 勾选（面板日志会出现「已识别 N 道题，正在请求 DeepSeek…」「DeepSeek 已给出答案，正在勾选选项」）；升级后刷新即可 |
+| 章节测验卡在「勾选选项」后停止提交 | **3.5.6+** 已修：之前用外层 `li/label` 点击可能不落到热区，现在先点原生 `input` 并用 `input.checked` 校验。日志若仍显示「X 选项未确认选中」，把面板日志截图反馈 |
 | 每次都要手动粘贴 ready.js，嫌麻烦 | 改成油猴全自动：装 Tampermonkey → 打开 `http://127.0.0.1:37841/xuexitong-console.ready.user.js` 安装 → 打开「允许用户脚本」→ 双击 `install-autostart.cmd`。以后只需打开学习通网页 |
 | 端口 `37841` 已被占用 | 说明服务已经在运行（多半是开机自启那个），不用再双击 cmd，直接打开学习通页面即可 |
 | 一直卡在纯课件小节 | 学习通会提示有任务未完成，默认不跳过：确认无需处理后 `app.nextUnit()`，或 `app.configs.autoAdvanceNoVideo = true` |

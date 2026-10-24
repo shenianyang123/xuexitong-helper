@@ -1660,6 +1660,46 @@ function createPlayerApp(PAGE, entryOptions) {
                     lock: lock ? { rate: lock.rate, blocked: lock.blocked } : null
                 };
             }
+            info.quiz = safeValue(function () {
+                var stats = { docs: 0, radios: 0, checkboxes: 0, kinds: 0, submit: false, optionTexts: [] };
+                var visit = function (doc, depth) {
+                    if (!doc || depth > 3) return;
+                    stats.docs += 1;
+                    stats.radios += doc.querySelectorAll('input[type="radio"]').length;
+                    stats.checkboxes += doc.querySelectorAll('input[type="checkbox"]').length;
+                    var bodyText = doc.body ? String(doc.body.innerText || "") : "";
+                    stats.kinds += (bodyText.match(/[\[【](单选题|多选题|判断题)[\]】]/g) || []).length;
+                    if (!stats.submit) {
+                        Array.prototype.some.call(doc.querySelectorAll('button,a,input[type="submit"]'), function (el) {
+                            var label = normalizeText(el.innerText || el.value || "");
+                            if (label === "提交") {
+                                stats.submit = true;
+                                return true;
+                            }
+                            return false;
+                        });
+                    }
+                    if (stats.optionTexts.length < 8) {
+                        Array.prototype.forEach.call(doc.querySelectorAll('label'), function (el) {
+                            if (stats.optionTexts.length < 8) {
+                                var text = normalizeText(el.innerText || "");
+                                if (text && text.length <= 24) stats.optionTexts.push(text);
+                            }
+                        });
+                    }
+                    Array.prototype.forEach.call(doc.querySelectorAll("iframe"), function (frame) {
+                        var inner = null;
+                        try {
+                            inner = frame.contentDocument;
+                        } catch (error) {
+                            inner = null;
+                        }
+                        visit(inner, depth + 1);
+                    });
+                };
+                visit(DOC, 0);
+                return stats;
+            }, null);
             void app;
             scanFrames(DOC, 0, "", info.frames);
             return info;
@@ -1686,6 +1726,7 @@ function createPlayerApp(PAGE, entryOptions) {
                     outline: info.dom.outline,
                     cells: info.cells,
                     video: info.video,
+                    quiz: info.quiz,
                     frames: info.frames
                 };
                 els.diag.textContent = "DIAG " + JSON.stringify(brief);

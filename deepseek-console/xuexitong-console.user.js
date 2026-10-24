@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         学习通自动刷课助手（DeepSeek 版）
 // @namespace    local.codex.xuexitong
-// @version      3.5.4
+// @version      3.5.6
 // @description  自动播放、多视频串联、断点续播、悬浮球控制，并可用本地服务自动作答章节测验
 // @author       Codex
 // @match        *://*.chaoxing.com/*mycourse/studentstudy*
@@ -68,7 +68,7 @@ function createPlayerApp(PAGE, entryOptions) {
 
     var OPTIONS = Object.assign({
         productName: "学习通自动播放助手",
-        version: "3.5.4",
+        version: "3.5.6",
         playbackRate: 1.5,
         muteVideo: false,
         autoResume: true
@@ -1718,6 +1718,46 @@ function createPlayerApp(PAGE, entryOptions) {
                     lock: lock ? { rate: lock.rate, blocked: lock.blocked } : null
                 };
             }
+            info.quiz = safeValue(function () {
+                var stats = { docs: 0, radios: 0, checkboxes: 0, kinds: 0, submit: false, optionTexts: [] };
+                var visit = function (doc, depth) {
+                    if (!doc || depth > 3) return;
+                    stats.docs += 1;
+                    stats.radios += doc.querySelectorAll('input[type="radio"]').length;
+                    stats.checkboxes += doc.querySelectorAll('input[type="checkbox"]').length;
+                    var bodyText = doc.body ? String(doc.body.innerText || "") : "";
+                    stats.kinds += (bodyText.match(/[\[【](单选题|多选题|判断题)[\]】]/g) || []).length;
+                    if (!stats.submit) {
+                        Array.prototype.some.call(doc.querySelectorAll('button,a,input[type="submit"]'), function (el) {
+                            var label = normalizeText(el.innerText || el.value || "");
+                            if (label === "提交") {
+                                stats.submit = true;
+                                return true;
+                            }
+                            return false;
+                        });
+                    }
+                    if (stats.optionTexts.length < 8) {
+                        Array.prototype.forEach.call(doc.querySelectorAll('label'), function (el) {
+                            if (stats.optionTexts.length < 8) {
+                                var text = normalizeText(el.innerText || "");
+                                if (text && text.length <= 24) stats.optionTexts.push(text);
+                            }
+                        });
+                    }
+                    Array.prototype.forEach.call(doc.querySelectorAll("iframe"), function (frame) {
+                        var inner = null;
+                        try {
+                            inner = frame.contentDocument;
+                        } catch (error) {
+                            inner = null;
+                        }
+                        visit(inner, depth + 1);
+                    });
+                };
+                visit(DOC, 0);
+                return stats;
+            }, null);
             void app;
             scanFrames(DOC, 0, "", info.frames);
             return info;
@@ -1744,6 +1784,7 @@ function createPlayerApp(PAGE, entryOptions) {
                     outline: info.dom.outline,
                     cells: info.cells,
                     video: info.video,
+                    quiz: info.quiz,
                     frames: info.frames
                 };
                 els.diag.textContent = "DIAG " + JSON.stringify(brief);
@@ -2404,7 +2445,65 @@ if (text) found.set(letter, { letter, text, element: target });
 return Array.from(found.values()).sort((a, b) => a.letter.localeCompare(b.letter));
 }
 
-function extractQuestions() {
+/* 新版页面（mooc-ans）的选项没有 A/B 字母，例如判断题直接是「对 / 错」。
+ * 这类题用 input[type=radio|checkbox] 的 name 分组定位，按 DOM 顺序映射成 A/B/C…，
+ * 再把选项文案交给 DeepSeek，回答的字母再映射回同一个 input。 */
+function inputOptionElements(card, inputs) {
+const found = [];
+for (const input of inputs) {
+const label = input.closest('label') || input.parentElement;
+const text = clean((label && label.innerText) || input.getAttribute('aria-label') ||
+input.getAttribute('value') || input.title || '');
+if (!text) continue;
+found.push({ letter: String.fromCharCode(65 + found.length), text, element: label || input, input });
+if (found.length >= 8) break;
+}
+return found;
+}
+
+function extractQuestionsByInputs() {
+const questions = [];
+const seen = new Set();
+for (const doc of courseDocuments()) {
+const inputs = Array.from(doc.querySelectorAll('input[type="radio"],input[type="checkbox"]'))
+.filter((el) => visible(el) || (el.closest('label') && visible(el.closest('label'))));
+if (!inputs.length) continue;
+const groups = new Map();
+for (const input of inputs) {
+const name = input.name || '__xxt_noname__';
+if (!groups.has(name)) groups.set(name, []);
+groups.get(name).push(input);
+}
+for (const group of groups.values()) {
+if (group.length < 2 || group.length > 8) continue;
+let container = group[0].parentElement;
+while (container && container !== doc.body) {
+const text = clean(container.innerText);
+const insideAll = group.every((input) => container.contains(input));
+if (insideAll && kindPattern.test(text) && text.length > 6) break;
+container = container.parentElement;
+}
+if (!container || container === doc.body || seen.has(container)) continue;
+const text = clean(container.innerText);
+const kinds = text.match(new RegExp(kindPattern.source, 'g')) || [];
+if (kinds.length !== 1) continue;
+const options = inputOptionElements(container, group);
+if (options.length < 2) continue;
+seen.add(container);
+let title = text;
+for (const option of options) {
+const at = title.indexOf(option.text);
+if (at > 0) { title = title.slice(0, at); break; }
+}
+title = clean(title).replace(/^\d+\s*/, '').replace(kindPattern, '').trim();
+if (!title || title.length > 500) continue;
+questions.push({ kind: kinds[0].match(kindPattern)[1], title, options, card: container, doc });
+}
+}
+return questions;
+}
+
+function extractQuestionsByLetters() {
 const questions = [];
 for (const doc of courseDocuments()) {
 const walker = doc.createTreeWalker(doc.body, NodeFilter.SHOW_TEXT);
@@ -2434,6 +2533,12 @@ questions.push({ kind, title, options, card, doc });
 }
 }
 return questions;
+}
+
+function extractQuestions() {
+const lettered = extractQuestionsByLetters();
+if (lettered.length) return lettered;
+return extractQuestionsByInputs();
 }
 
 function findButton(doc, label) {
@@ -2484,7 +2589,10 @@ if (stopped) throw new Error('脚本已停止');
 if (quizCompleted()) return null;
 submitDoc = courseDocuments().find((doc) => findButton(doc, '提交'));
 if (submitDoc) break;
-if (attempt > 0 && attempt % 30 === 0) console.log(`测验提交按钮仍在加载，已等待 ${attempt / 2} 秒`);
+if (attempt > 0 && attempt % 30 === 0) {
+console.log(`测验提交按钮仍在加载，已等待 ${attempt / 2} 秒`);
+note(`等待测验页面加载…已 ${attempt / 2} 秒`, 'info');
+}
 await sleep(500);
 }
 if (!submitDoc) throw new Error('进入章节测验后等待 120 秒，仍未找到“提交”按钮。请检查题目框架是否正常加载');
@@ -2507,7 +2615,11 @@ if (stableCount >= 3) return questions;
 stableCount = 0;
 previousSignature = '';
 }
-if (attempt > 0 && attempt % 30 === 0) console.log(`测验题目仍在加载，已等待 ${attempt / 2} 秒；当前识别 ${questions.length} 道`);
+if (attempt > 0 && attempt % 20 === 0) {
+console.log(`测验题目仍在加载，已等待 ${attempt / 2} 秒；当前识别 ${questions.length} 道`);
+note(`正在识别测验题目…已 ${attempt / 2} 秒，识别到 ${questions.length} 道` +
+(expected ? `（页面显示 ${expected} 道）` : ''), 'info');
+}
 await sleep(500);
 }
 throw new Error('测验框架已打开，但等待 120 秒仍未识别完整题目。可运行 app.inspectQuiz() 查看当前识别结果');
@@ -2558,6 +2670,46 @@ result.set(item.id, letters);
 return result;
 }
 
+function optionInput(option) {
+const el = option?.element;
+if (!el) return null;
+if (el.matches && el.matches('input')) return el;
+return el.querySelector ? el.querySelector('input') : null;
+}
+
+/* radio/checkbox 的选中态是 property，不会出现在 outerHTML 里，所以必须直接读 checked；
+ * 新版 mooc-ans 的选项是 label 包 input，点击外层 li/label 有时不落到热区，只能直接点 input。 */
+function optionSelected(option) {
+const input = optionInput(option);
+if (input && input.checked) return true;
+let node = option.element;
+for (let depth = 0; node && depth < 4; depth++, node = node.parentElement) {
+if (typeof node.getAttribute === 'function') {
+const aria = node.getAttribute('aria-checked') || node.getAttribute('aria-selected');
+if (aria === 'true') return true;
+}
+const cls = typeof node.className === 'string' ? node.className : '';
+if (/(^|[\s_-])(checked|active|selected)([\s_-]|$)/.test(cls)) return true;
+}
+return false;
+}
+
+function pressOptionTarget(el) {
+if (!el) return;
+try {
+el.scrollIntoView({ block: 'center' });
+} catch (_) {}
+const win = (el.ownerDocument && el.ownerDocument.defaultView) || window;
+for (const type of ['mousedown', 'mouseup']) {
+try {
+el.dispatchEvent(new win.MouseEvent(type, { bubbles: true, cancelable: true, view: win }));
+} catch (_) {}
+}
+try {
+el.click();
+} catch (_) {}
+}
+
 async function selectAnswers(questions, answers) {
 for (let i = 0; i < questions.length; i++) {
 const q = questions[i];
@@ -2565,14 +2717,32 @@ for (const letter of answers.get(i + 1)) {
 if (stopped) throw new Error('脚本已停止');
 const option = q.options.find((item) => item.letter === letter);
 if (!option?.element?.isConnected) throw new Error(`第 ${i + 1} 题选项已变化`);
-option.element.scrollIntoView({ block: 'center' });
-const before = q.card.outerHTML;
-option.element.click();
-await sleep(150);
-const after = q.card.outerHTML;
-const input = option.element.matches('input') ? option.element : option.element.querySelector('input');
-const checked = input?.checked || option.element.getAttribute('aria-checked') === 'true';
-if (before === after && !checked) throw new Error(`第 ${i + 1} 题 ${letter} 选项未确认选中，已停止提交`);
+const snapshot = () => (q.card ? q.card.outerHTML : '');
+const before = snapshot();
+const input = optionInput(option);
+const targets = [];
+if (input) targets.push(input);
+targets.push(option.element);
+if (option.element.parentElement) targets.push(option.element.parentElement);
+const label = option.element.closest ? option.element.closest('label') : null;
+if (label && !targets.includes(label)) targets.push(label);
+for (const target of targets) {
+if (optionSelected(option) || snapshot() !== before) break;
+pressOptionTarget(target);
+await sleep(140);
+}
+if (!optionSelected(option) && snapshot() === before && input) {
+try {
+input.checked = true;
+const win = (input.ownerDocument && input.ownerDocument.defaultView) || window;
+input.dispatchEvent(new win.Event('input', { bubbles: true }));
+input.dispatchEvent(new win.Event('change', { bubbles: true }));
+input.dispatchEvent(new win.MouseEvent('click', { bubbles: true, cancelable: true, view: win }));
+} catch (_) {}
+await sleep(120);
+}
+if (!optionSelected(option) && snapshot() === before)
+throw new Error(`第 ${i + 1} 题 ${letter} 选项未确认选中，已停止提交`);
 }
 }
 }
@@ -2678,6 +2848,29 @@ options: q.options.map((o) => `${o.letter}. ${o.text}`),
 }));
 };
 
+/* 便于离线排查：在控制台执行 app.inspectQuizDetail() 查看识别来源 */
+app.inspectQuizDetail = function () {
+const letters = extractQuestionsByLetters();
+const byInputs = extractQuestionsByInputs();
+return {
+byLetters: letters.length,
+byInputs: byInputs.length,
+radios: courseDocuments().map((doc) => doc.querySelectorAll('input[type="radio"],input[type="checkbox"]').length),
+questions: (letters.length ? letters : byInputs).map((q, i) => ({
+id: i + 1, type: q.kind, question: q.title,
+options: q.options.map((o) => `${o.letter}. ${o.text}`),
+})),
+};
+};
+
+app._quizExtract = {
+all: extractQuestions,
+byLetters: extractQuestionsByLetters,
+byInputs: extractQuestionsByInputs,
+letterOptions: optionElements,
+select: selectAnswers,
+};
+
 app._advanceChapterTest = function () {
 if (stopped || quizBusy) return;
 quizBusy = true;
@@ -2707,10 +2900,13 @@ throw new Error(`页面显示 ${countText[1]} 道题，脚本只识别 ${questio
 const signature = questions.map((q) => `${q.kind}:${q.title}`).join('|');
 if (attemptedQuizzes.has(signature)) throw new Error('本次测验已尝试过，已停止重复提交');
 console.log(`识别到 ${questions.length} 道题，正在调用 DeepSeek`);
+note(`已识别 ${questions.length} 道题，正在请求 DeepSeek…`, 'info');
 const answers = validateAnswers(questions, await askDeepSeek(questions));
 console.table(questions.map((q, i) => ({ 题号: i + 1, 题型: q.kind, 选择: answers.get(i + 1).join('') })));
+note('DeepSeek 已给出答案，正在勾选选项', 'info');
 await selectAnswers(questions, answers);
 attemptedQuizzes.add(signature);
+note('选项已勾选，正在提交测验', 'info');
 await submitQuiz(questions[0].doc);
 console.log('章节测验提交已确认，点击“下一节”进入新视频');
 note('章节测验已提交，进入下一节', 'ok');
@@ -2772,7 +2968,7 @@ console.error('章节测验自动作答停止:', error);
                     "            window.__xuexitongLastUrl = page.location.href;\n" +
                     "            window.__xuexitongLastInjectionAt = Date.now() - 30000;\n" +
                     "        }\n" +
-                    "        if (page.document.readyState !== 'complete' || !page.document.querySelector('#coursetree')) return;\n" +
+                    "        if (page.document.readyState !== 'complete' || !page.document.querySelector('#coursetree, .posCatalog_select, a[href*=getTeacherAjax]')) return;\n" +
                     "        if (page.__xuexitongConsoleDeepSeek || page.__xuexitongConsoleDeepSeekBootTimer) return;\n" +
                     "        if (Date.now() - window.__xuexitongLastInjectionAt < 30000) return;\n" +
                     "        window.__xuexitongLastInjectionAt = Date.now();\n" +
@@ -2798,11 +2994,21 @@ console.error('章节测验自动作答停止:', error);
         }
     }
 
+    function hasCourseCatalog() {
+        try {
+            return Boolean(document.querySelector("#coursetree")) ||
+                Boolean(document.querySelector(".posCatalog_select")) ||
+                Boolean(document.querySelector('a[href*="getTeacherAjax"]'));
+        } catch (error) {
+            return false;
+        }
+    }
+
     function waitForCoursePage() {
         var attempts = 0;
         var maxAttempts = 20;
         PAGE[BOOT_TIMER_KEY] = setInterval(function () {
-            if (document.querySelector("#coursetree")) {
+            if (hasCourseCatalog()) {
                 clearInterval(PAGE[BOOT_TIMER_KEY]);
                 PAGE[BOOT_TIMER_KEY] = null;
                 initializePlayer();
@@ -2813,7 +3019,7 @@ console.error('章节测验自动作答停止:', error);
                 clearInterval(PAGE[BOOT_TIMER_KEY]);
                 PAGE[BOOT_TIMER_KEY] = null;
                 console.error(
-                    "脚本启动超时：未检测到课程目录（#coursetree）。请确认当前处于课程播放页。"
+                    "脚本启动超时：未检测到课程目录。请确认当前处于课程播放页。"
                 );
             }
         }, 1000);

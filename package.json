@@ -1,6 +1,6 @@
 {
   "name": "xuexitong-script",
-  "version": "3.5.4",
+  "version": "3.5.6",
   "private": true,
   "description": "学习通自动刷课（多视频串联 / 断点续播 / 控制面板）+ DeepSeek 章节测验自动作答",
   "type": "module",
@@ -8,7 +8,7 @@
     "build": "node scripts/build.mjs",
     "verify": "node tests/verify.mjs",
     "test": "node scripts/build.mjs && node tests/verify.mjs && npm run test:unit",
-    "test:unit": "node --test --test-isolation=none tests/deepseek-request.test.mjs tests/local-service.test.mjs tests/autostart.test.mjs tests/player.test.mjs",
+    "test:unit": "node --test --test-isolation=none tests/deepseek-request.test.mjs tests/local-service.test.mjs tests/autostart.test.mjs tests/player.test.mjs tests/quiz-extract.test.mjs",
     "check": "npm run test",
     "start": "node deepseek-console/deepseek-local.mjs",
     "autostart": "node deepseek-console/autostart.mjs install",

@@ -91,7 +91,7 @@
                     "            window.__xuexitongLastUrl = page.location.href;\n" +
                     "            window.__xuexitongLastInjectionAt = Date.now() - 30000;\n" +
                     "        }\n" +
-                    "        if (page.document.readyState !== 'complete' || !page.document.querySelector('#coursetree')) return;\n" +
+                    "        if (page.document.readyState !== 'complete' || !page.document.querySelector('#coursetree, .posCatalog_select, a[href*=getTeacherAjax]')) return;\n" +
                     "        if (page.__xuexitongConsoleDeepSeek || page.__xuexitongConsoleDeepSeekBootTimer) return;\n" +
                     "        if (Date.now() - window.__xuexitongLastInjectionAt < 30000) return;\n" +
                     "        window.__xuexitongLastInjectionAt = Date.now();\n" +
@@ -117,11 +117,21 @@
         }
     }
 
+    function hasCourseCatalog() {
+        try {
+            return Boolean(document.querySelector("#coursetree")) ||
+                Boolean(document.querySelector(".posCatalog_select")) ||
+                Boolean(document.querySelector('a[href*="getTeacherAjax"]'));
+        } catch (error) {
+            return false;
+        }
+    }
+
     function waitForCoursePage() {
         var attempts = 0;
         var maxAttempts = 20;
         PAGE[BOOT_TIMER_KEY] = setInterval(function () {
-            if (document.querySelector("#coursetree")) {
+            if (hasCourseCatalog()) {
                 clearInterval(PAGE[BOOT_TIMER_KEY]);
                 PAGE[BOOT_TIMER_KEY] = null;
                 initializePlayer();
@@ -132,7 +142,7 @@
                 clearInterval(PAGE[BOOT_TIMER_KEY]);
                 PAGE[BOOT_TIMER_KEY] = null;
                 console.error(
-                    "脚本启动超时：未检测到课程目录（#coursetree）。请确认当前处于课程播放页。"
+                    "脚本启动超时：未检测到课程目录。请确认当前处于课程播放页。"
                 );
             }
         }, 1000);
