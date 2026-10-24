@@ -198,3 +198,47 @@ test('勾选答案：老版字母选项点击后由页面加上选中样式，�
         restore();
     }
 });
+
+test('测验完成判定：成绩页文案带全角冒号（本次成绩：100 / 得分：100.0 分）也算已完成', () => {
+    const scoreHtml = `<!doctype html><html><body>
+        <div class="testTitle">章节测验</div>
+        <div class="score">本次成绩：100</div>
+        <div class="score">得分：100.0 分</div>
+    </body></html>`;
+    const { app, restore } = loadQuizAutomation(scoreHtml);
+    try {
+        assert.equal(app._quizExtract.completed(), true, '带全角冒号的成绩文案不应再判为未完成');
+    } finally {
+        restore();
+    }
+});
+
+test('测验完成判定：只有题目、没有成绩页时不算已完成', () => {
+    const { app, restore } = loadQuizAutomation(NEW_QUIZ_HTML);
+    try {
+        assert.equal(app._quizExtract.completed(), false, '未提交的题目页不能判为已完成');
+    } finally {
+        restore();
+    }
+});
+
+test('下一节：页面上没有「下一节」按钮时按课程目录跳到下一小节', async () => {
+    const { app, restore } = loadQuizAutomation('<html><body></body></html>');
+    const jumps = [];
+    const marked = [];
+    try {
+        app._markSectionCompleted = () => marked.push(true);
+        app._computeNextNode = () => ({ c: 0, n: 1 });
+        app._jumpToSection = (c, n) => {
+            jumps.push([c, n]);
+            return true;
+        };
+        await app.nextUnit();
+        await new Promise((resolve) => setTimeout(resolve, 50));
+        assert.ok(marked.length >= 1, '前进前应把当前小节记为已完成');
+        assert.deepEqual(jumps, [[0, 1]], '没有「下一节」按钮时应按目录跳转');
+    } finally {
+        restore();
+    }
+});
+

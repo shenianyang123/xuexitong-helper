@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         学习通自动刷课助手（DeepSeek 版）
 // @namespace    local.codex.xuexitong
-// @version      3.5.6
+// @version      3.5.7
 // @description  自动播放、多视频串联、断点续播、悬浮球控制，并可用本地服务自动作答章节测验
 // @author       Codex
 // @match        *://*.chaoxing.com/*mycourse/studentstudy*
@@ -68,7 +68,7 @@ function createPlayerApp(PAGE, entryOptions) {
 
     var OPTIONS = Object.assign({
         productName: "学习通自动播放助手",
-        version: "3.5.6",
+        version: "3.5.7",
         playbackRate: 1.5,
         muteVideo: false,
         autoResume: true
@@ -2408,11 +2408,23 @@ visit(document, 0);
 return result;
 }
 
+/* 判据要宽松：真实成绩页文案是「本次成绩：100」「得分：100.0 分」（中间有全角冒号），
+ * 旧正则 /本次成绩\s*\d+…分/ 永远匹配不到，导致提交后一直等待、面板卡死。 */
+const SCORE_PATTERNS = [
+/本次成绩\s*[:：]?\s*\d+(?:\.\d+)?/,
+/得分\s*[:：]?\s*\d+(?:\.\d+)?/,
+/成绩\s*[:：]\s*\d+(?:\.\d+)?/,
+];
+const SCORE_SELECTOR = '.Tis_Score,.mark_score,.markScore,#mark_score,.result-score,.score-num';
+
 function quizCompleted() {
 const scoreShown = courseDocuments().some((doc) => {
-const text = clean(doc.body?.innerText);
-const hasGrade = /本次成绩\s*\d+(?:\.\d+)?\s*分/.test(text);
-return hasGrade && (/章节测验\s*已完成/.test(text) || /我的答案\s*[:：]/.test(text));
+let text = '';
+try { text = clean(doc.body?.innerText); } catch (_) { text = ''; }
+if (SCORE_PATTERNS.some((pattern) => pattern.test(text))) return true;
+try { if (doc.querySelector(SCORE_SELECTOR)) return true; } catch (_) { /* ignore */ }
+const hasGrade = /成绩|得分/.test(text);
+return hasGrade && (/章节测验\s*已完成/.test(text) || /我的答案\s*[:：]/.test(text) || /查看答案/.test(text));
 });
 if (scoreShown) return true;
 const cardsFrame = Array.from(document.querySelectorAll('iframe[src*="/knowledge/cards"]'))
@@ -2781,20 +2793,45 @@ console.log('选项已选择，点击章节测验的提交按钮');
 submit.click();
 await confirmSubmitDialog();
 console.log('提交已确认，等待学习通生成成绩或任务完成标记；确认后再点击“下一节”');
+note('已点击提交，等待平台生成成绩…', 'info');
 let elapsedHalfSeconds = 0;
+/* 45 秒还没出现成绩页就不要静默空转：只要“提交”按钮已消失就按已提交继续，
+ * 否则抛错让面板显示“需手动处理”，避免用户看到面板永远卡在“章节测验自动作答中”。 */
+const deadlineHalfSeconds = 90;
 while (!stopped) {
 await sleep(500);
 elapsedHalfSeconds++;
 if (quizCompleted()) return;
-if (elapsedHalfSeconds % 30 === 0) console.log(`成绩页仍在加载，已等待 ${elapsedHalfSeconds / 2} 秒`);
+if (elapsedHalfSeconds % 10 === 0)
+note(`已提交，等待平台生成成绩…已 ${elapsedHalfSeconds / 2} 秒`, 'info');
+if (elapsedHalfSeconds % 30 === 0)
+console.log(`成绩页仍在加载，已等待 ${elapsedHalfSeconds / 2} 秒`);
+if (elapsedHalfSeconds >= deadlineHalfSeconds) {
+if (!findButton(doc, '提交')) {
+note('提交按钮已消失，按“已提交”继续下一节', 'warn');
+return;
+}
+throw new Error('提交后 45 秒仍未出现成绩页，请手动确认测验是否提交成功');
+}
 }
 throw new Error('脚本已停止');
 }
 
 async function goToNextStep() {
 if (stopped) throw new Error('脚本已停止');
+if (typeof app._markSectionCompleted === 'function') app._markSectionCompleted();
 const next = findNextButton();
-if (!next) throw new Error('未找到页面下方的“下一节”按钮');
+if (!next) {
+/* 成绩页/部分新版页面底部没有“下一节”按钮：改按课程目录直接跳到下一小节 */
+const target = typeof app._computeNextNode === 'function' ? app._computeNextNode() : null;
+if (!target || typeof app._jumpToSection !== 'function')
+throw new Error('未找到页面下方的“下一节”按钮，也未取到下一小节');
+note(`未找到“下一节”按钮，按目录跳到第 ${target.c + 1} 章第 ${target.n + 1} 节`, 'info');
+app._nextUnitPending = false;
+if (!app._jumpToSection(target.c, target.n))
+throw new Error('按目录跳转下一小节失败');
+return;
+}
 app._nextUnitPending = true;
 const previousStep = app._currentStepTitle();
 app._clearCheckInterval();
@@ -2869,6 +2906,7 @@ byLetters: extractQuestionsByLetters,
 byInputs: extractQuestionsByInputs,
 letterOptions: optionElements,
 select: selectAnswers,
+completed: quizCompleted,
 };
 
 app._advanceChapterTest = function () {

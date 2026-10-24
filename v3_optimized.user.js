@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         学习通自动刷课脚本 V3 稳定版
 // @namespace    local.codex.xuexitong
-// @version      3.5.6
+// @version      3.5.7
 // @description  自动播放、多视频串联、断点续播，并在页面结构异常时安全停止
 // @author       Codex
 // @match        *://*.chaoxing.com/*mycourse/studentstudy*
@@ -47,7 +47,7 @@ function createPlayerApp(PAGE, entryOptions) {
 
     var OPTIONS = Object.assign({
         productName: "学习通自动播放助手",
-        version: "3.5.6",
+        version: "3.5.7",
         playbackRate: 1.5,
         muteVideo: false,
         autoResume: true

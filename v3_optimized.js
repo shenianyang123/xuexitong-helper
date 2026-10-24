@@ -34,7 +34,7 @@ function createPlayerApp(PAGE, entryOptions) {
 
     var OPTIONS = Object.assign({
         productName: "学习通自动播放助手",
-        version: "3.5.6",
+        version: "3.5.7",
         playbackRate: 1.5,
         muteVideo: false,
         autoResume: true
