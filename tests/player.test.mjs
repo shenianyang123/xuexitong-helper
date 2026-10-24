@@ -40,10 +40,26 @@ const PAGE_HTML = `<!doctype html>
 
 const wait = (ms) => new Promise((done) => setTimeout(done, ms));
 
+/** 新版 mooc-ans 学生页：目录里没有 #coursetree，只有调用 getTeacherAjax 的小节链接。 */
+const LINK_PAGE_HTML = `<!doctype html>
+<html><head><title>学习通</title></head>
+<body>
+  <div class="prev_title">1.1 何为心理健康</div>
+  <div class="prev_white">1.1 何为心理健康</div>
+  <div class="prev_white">1.2 心理健康的标准</div>
+  <div class="prev_white">2.1 认识自我</div>
+  <ul>
+    <li><span class="catalog_num">1</span><a href="javascript:getTeacherAjax('268192668','157461710','1266657450')">1.1 何为心理健康</a></li>
+    <li><span class="catalog_num">1.2</span><a href="javascript:getTeacherAjax('268192668','157461710','1266657451')">1.2 心理健康的标准</a></li>
+    <li><span class="catalog_num">2</span><a href="javascript:getTeacherAjax('268192668','157461710','1266657460')">2.1 认识自我</a></li>
+  </ul>
+  <video id="video_html5_api"></video>
+</body></html>`;
+
 /** 创建一个尽量接近真实学习通播放页的 jsdom 环境，并加载 V3 产物。 */
-function createPage() {
-    const dom = new JSDOM(PAGE_HTML, {
-        url: 'https://mooc1.chaoxing.com/mycourse/studentstudy?chapterId=100&clazzid=1',
+function createPage(options = {}) {
+    const dom = new JSDOM(options.html || PAGE_HTML, {
+        url: options.url || 'https://mooc1.chaoxing.com/mycourse/studentstudy?chapterId=100&clazzid=1',
         runScripts: 'outside-only',
         pretendToBeVisual: true,
     });
@@ -292,6 +308,107 @@ test('destroy 会停止定时器并移除 HUD；重复注入会替换旧实例',
         second.destroy();
         assert.equal(window.document.getElementById('xuexitong-helper-hud'), null);
     } finally {
+        dom.window.close();
+    }
+});
+
+test('倍速锁定：播放器把倍速改回 1 倍时会被拦截（学习通新版会强制改回 1x）', () => {
+    const { dom, window, app } = createPage();
+    try {
+        const video = window.document.getElementById('video_html5_api');
+        app._lockPlaybackRate(video, 2);
+        assert.equal(video.playbackRate, 2, '锁定后应为 2 倍速');
+
+        // 模拟学习通播放器强行改写倍速
+        video.playbackRate = 1;
+        assert.equal(video.playbackRate, 2, '外部改回 1 倍速应被忽略');
+        assert.equal(video.__xxtRateLock.blocked, 1, '应记录一次被拦截的改写');
+
+        // 用户在 HUD 里改成 3 倍速要能真正生效
+        app.updateSettings({ playbackRate: 3 });
+        assert.equal(video.playbackRate, 3);
+        assert.equal(app.configs.playbackRate, 3);
+    } finally {
+        window.app?.destroy();
+        dom.window.close();
+    }
+});
+
+test('诊断信息会写入 localStorage，便于站点改版后离线排查', () => {
+    const { dom, window, app } = createPage();
+    try {
+        app._writeDiagnostics('test');
+        const raw = window.localStorage.getItem('xuexitong.helper.diag.v1');
+        assert.ok(raw, '应写入诊断键 xuexitong.helper.diag.v1');
+        const diag = JSON.parse(raw);
+        assert.equal(diag.reason, 'test');
+        assert.match(String(diag.version), /^\d+\.\d+\.\d+$/, '诊断里应带脚本版本号');
+        assert.equal(diag.dom.treeFound, true, '诊断应记录目录是否找到');
+        assert.equal(diag.dom.counts['#coursetree'], 1);
+        assert.ok(Array.isArray(diag.frames));
+        assert.ok(Array.isArray(diag.dom.outline) && diag.dom.outline.length > 0);
+        assert.equal(diag.cells.chapters, 2);
+    } finally {
+        window.app?.destroy();
+        dom.window.close();
+    }
+});
+
+test('URL 参数 xxtrate 可指定倍速（站点强制改回 1x 时的兜底手段）', () => {
+    const { dom, window, app } = createPage({
+        url: 'https://mooc1.chaoxing.com/mycourse/studentstudy?chapterId=100&clazzid=1&xxtrate=2',
+    });
+    try {
+        assert.equal(app.configs.playbackRate, 2, 'xxtrate=2 应把倍速设为 2');
+    } finally {
+        window.app?.destroy();
+        dom.window.close();
+    }
+});
+
+test('目录容器没有 #coursetree 时也能回退解析（站点改版兜底）', () => {
+    const { dom, window, app } = createPage();
+    try {
+        const tree = window.document.getElementById('coursetree');
+        assert.ok(tree, '测试页面应带 #coursetree');
+        tree.removeAttribute('id');
+        assert.ok(app._getTreeContainer(), '没有 #coursetree 时应能回退找到目录容器');
+        app._initCellData();
+        assert.equal(app.cellData.cells.length, 2, '回退后仍应解析出 2 章');
+        assert.equal(app.cellData.nCells.length, 2, '回退后仍应解析出 2 个小节');
+        assert.equal(app.cellData.currentVideoTitle, '1.1 视频一');
+    } finally {
+        window.app?.destroy();
+        dom.window.close();
+    }
+});
+
+test('新版页面目录只有 getTeacherAjax 链接时也能解析出章节与当前小节', () => {
+    const { dom, window, app } = createPage({
+        html: LINK_PAGE_HTML,
+        url: 'https://mooc1-2.chaoxing.com/mooc-ans/mycourse/studentstudy?chapterId=1266657450&courseId=268192668&clazzid=157461710',
+    });
+    try {
+        assert.equal(app._getChapterNodes().length, 0, '新版页面没有 .posCatalog_select，旧解析应为空');
+        assert.equal(app.cellData.cells.length, 2, '应能按链接章号分出 2 章');
+        assert.equal(app.cellData.nCells.length, 2, '第一章应有 2 个小节');
+        assert.equal(app.cellData.currentCellIndex, 0);
+        assert.equal(app.cellData.currentNCellIndex, 0);
+        assert.equal(app.cellData.currentVideoTitle, '1.1 何为心理健康', '应按 URL 里的 chapterId 定位当前小节');
+        assert.equal(app._currentSectionKey(), '0|0', '有目录数据后小节键应可用');
+        assert.ok(app._positionKey(), '有目录数据后应能写入断点续播的位置键');
+        const next = app._computeNextNode();
+        assert.deepEqual({ ...next }, { c: 0, n: 1 });
+
+        const sections = app.cellData.cells[0].querySelectorAll('.posCatalog_select:not(.firstLayer)');
+        assert.equal(sections.length, 2);
+        assert.equal(sections[0].classList.contains('posCatalog_active'), true, 'chapterId 命中的小节应标为当前');
+        assert.equal(sections[1].classList.contains('posCatalog_active'), false);
+        const anchor = sections[1].querySelector('.posCatalog_name');
+        assert.ok(anchor && anchor.tagName === 'A', '小节名应指向真实链接，供点击跳转');
+        assert.ok(String(anchor.getAttribute('href')).includes('getTeacherAjax'), '链接应保留 getTeacherAjax 跳转');
+    } finally {
+        window.app?.destroy();
         dom.window.close();
     }
 });

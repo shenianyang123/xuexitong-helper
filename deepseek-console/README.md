@@ -118,6 +118,8 @@ app.configs.autoAdvanceNoVideo = true; // 允许跳过无视频小节
 | `输出达到长度上限` | 调大 `DEEPSEEK_MAX_TOKENS`，或减少一次提交的题目数量 |
 | `本地令牌不匹配` | 关闭旧服务窗口，重新启动，复制新的 `xuexitong-console.ready.js` |
 | 整页跳转后脚本没恢复 | 允许 `mooc1.chaoxing.com` 打开弹出窗口；或在新页面重新粘贴脚本 |
+| 新版播放页（地址里带 `/mooc-ans`）以前能用现在没反应 / 面板「章节」显示「未定位到目录」 | 升到 **3.5.4+**：这个版本支持新版页面的链接式目录（`a[href*="getTeacherAjax"]`），并在入口处放行没有 `#coursetree` 的页面。升级后刷新页面即可 |
+| 倍速设了 2x 但视频跑回原速 | 播放器会主动改回倍速，脚本已做锁定（日志会写「播放器尝试把倍速改回 X 倍，已拦截」）；也可用 `?xxtrate=2` 参数强制设一次 |
 | 出现黄色“已在调试程序中暂停” | 在开发者工具按 `F8` 恢复执行，并检查“遇到异常时暂停”是否开启 |
 | `Uncaught SyntaxError: missing )` | 粘贴内容被截断，重新从文件复制（末尾应为 `})();`） |
 | 双击 `start-local-service.cmd` 一闪而过，或窗口里报 `'xxx' 不是内部或外部命令` | 早期 ZIP 里的 `.cmd` 换行是 LF，cmd.exe 无法解析（现已改为 CRLF，重新下载最新 ZIP 即可）。临时办法：在 `deepseek-console` 目录里执行 `node deepseek-local.mjs` |

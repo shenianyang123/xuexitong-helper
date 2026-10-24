@@ -34,6 +34,7 @@ function createPlayerApp(PAGE, entryOptions) {
 
     var OPTIONS = Object.assign({
         productName: "学习通自动播放助手",
+        version: "3.5.4",
         playbackRate: 1.5,
         muteVideo: false,
         autoResume: true
@@ -62,6 +63,8 @@ function createPlayerApp(PAGE, entryOptions) {
         autoResume: OPTIONS.autoResume,
         resumePosition: true,
         keepAlive: true,
+        diag: true,
+        diagHud: false,
         videoCheckInterval: 1000,
         guardNoProgressMs: 7000,
         guardResumeCooldownMs: 1500,
@@ -180,6 +183,103 @@ function createPlayerApp(PAGE, entryOptions) {
     }
 
     /* ------------------------------------------------------------------ *
+     * 自检（诊断）：把页面结构 / 视频状态写进 localStorage，
+     * 方便在站点改版后离线读取（Edge 里读 leveldb 即可），不用反复手动粘贴。
+     * ------------------------------------------------------------------ */
+
+    var DIAG_KEY = "xuexitong.helper.diag.v1";
+
+    function safeValue(fn, fallback) {
+        try {
+            var value = fn();
+            return value === undefined ? fallback : value;
+        } catch (error) {
+            return fallback;
+        }
+    }
+
+    function outlineNode(el) {
+        if (!el || !el.tagName) return "";
+        var cls = typeof el.className === "string" ? el.className : "";
+        cls = String(cls || "").replace(/\s+/g, ".").replace(/^\.+|\.+$/g, "");
+        return el.tagName.toLowerCase() + (el.id ? "#" + el.id : "") + (cls ? "." + cls : "");
+    }
+
+    function domOutline(doc, limit) {
+        var lines = [];
+        var root = doc && (doc.body || doc.documentElement);
+        function walk(el, depth, prefix) {
+            if (!el || depth > 3 || lines.length >= limit) return;
+            var kids = el.children || [];
+            for (var i = 0; i < kids.length; i++) {
+                if (lines.length >= limit) return;
+                lines.push(prefix + outlineNode(kids[i]));
+                walk(kids[i], depth + 1, "  " + prefix);
+            }
+        }
+        walk(root, 0, "");
+        return lines;
+    }
+
+    function catalogClassTokens(doc, limit) {
+        var out = [];
+        var seen = {};
+        var nodes = [];
+        try {
+            nodes = doc.querySelectorAll('[class*="atalog"],[class*="hapter"],[class*="video"],[class*="node"]');
+        } catch (error) {
+            return out;
+        }
+        for (var i = 0; i < nodes.length && out.length < limit; i++) {
+            var cls = String(nodes[i].className || "");
+            if (!cls) continue;
+            var tokens = cls.split(/\s+/);
+            for (var j = 0; j < tokens.length && out.length < limit; j++) {
+                var token = tokens[j];
+                if (!token || seen[token]) continue;
+                seen[token] = 1;
+                out.push(token);
+            }
+        }
+        return out;
+    }
+
+    function scanFrames(doc, depth, path, out) {
+        if (!doc || depth > 2) return;
+        var frames = safeValue(function () { return doc.querySelectorAll("iframe"); }, []) || [];
+        for (var i = 0; i < frames.length && out.length < 12; i++) {
+            var frame = frames[i];
+            var info = {
+                path: path + "iframe[" + i + "]",
+                id: frame.id || "",
+                cls: String(typeof frame.className === "string" ? frame.className : ""),
+                src: String(frame.getAttribute("src") || "").slice(0, 200)
+            };
+            var inner = safeValue(function () { return frame.contentDocument; }, null);
+            info.readable = Boolean(inner);
+            if (inner) {
+                info.hasTree = Boolean(safeValue(function () { return inner.querySelector("#coursetree"); }, null));
+                info.catalogCount = safeValue(function () { return inner.querySelectorAll(".posCatalog_select").length; }, -1);
+                info.videoCount = safeValue(function () { return inner.querySelectorAll("video").length; }, -1);
+                info.videos = safeValue(function () {
+                    return Array.prototype.slice.call(inner.querySelectorAll("video")).slice(0, 3).map(function (v) {
+                        return {
+                            t: Number(v.currentTime) || 0,
+                            d: Number(v.duration) || 0,
+                            rate: safeValue(function () { return v.playbackRate; }, null),
+                            paused: Boolean(v.paused),
+                            src: String(v.currentSrc || v.src || "").slice(0, 120)
+                        };
+                    });
+                }, []);
+                info.outline = domOutline(inner, 20);
+                scanFrames(inner, depth + 1, info.path + "/", out);
+            }
+            out.push(info);
+        }
+    }
+
+    /* ------------------------------------------------------------------ *
      * 进度记录
      * ------------------------------------------------------------------ */
 
@@ -273,7 +373,9 @@ function createPlayerApp(PAGE, entryOptions) {
         ".xxt-log{font-size:11px;line-height:1.45;color:#8b949e;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}",
         ".xxt-log-ok{color:#3fb950}",
         ".xxt-log-warn{color:#d29922}",
-        ".xxt-log-error{color:#f85149}"
+        ".xxt-log-error{color:#f85149}",
+        ".xxt-diag{display:none;margin-top:4px;font-size:9px;line-height:1.3;color:#7ee787;white-space:pre-wrap;word-break:break-all;max-height:180px;overflow:auto}",
+        '.xxt-panel[data-diag="1"] .xxt-diag{display:block}'
     ].join("");
 
     var HUD_HTML = [
@@ -311,6 +413,7 @@ function createPlayerApp(PAGE, entryOptions) {
         '        <button class="xxt-pill" type="button" data-setting="autoAdvanceNoVideo">跳过无视频<span class="xxt-pill-state"></span></button>',
         "      </div>",
         '      <div class="xxt-logs"></div>',
+        '      <pre class="xxt-diag"></pre>',
         "    </div>",
         "  </div>",
         '  <button class="xxt-ball" type="button" title="学习通助手：点击展开功能菜单">',
@@ -348,6 +451,8 @@ function createPlayerApp(PAGE, entryOptions) {
             bar: root.querySelector(".xxt-bar-inner"),
             progress: root.querySelector(".xxt-progress"),
             logs: root.querySelector(".xxt-logs"),
+            diag: root.querySelector(".xxt-diag"),
+            panel: panel,
             fold: root.querySelector(".xxt-fold"),
             toggle: root.querySelector(".xxt-toggle"),
             next: root.querySelector(".xxt-next"),
@@ -666,10 +771,23 @@ function createPlayerApp(PAGE, entryOptions) {
             this._positions = this._loadPositions();
             this._treeContainerEl = this._getTreeContainer();
             if (!this._treeContainerEl) {
-                this._note("未找到课程目录（#coursetree），等待页面加载", "warn");
+                // 新版 mooc-ans 页面把目录换成了 getTeacherAjax 链接，没有 #coursetree。
+                var hasCatalogLinks = false;
+                try {
+                    hasCatalogLinks = Boolean(DOC.querySelector('a[href*="getTeacherAjax"]'));
+                } catch (error) {
+                    hasCatalogLinks = false;
+                }
+                if (hasCatalogLinks) {
+                    this._note("新版课程页：按目录链接重建章节", "info");
+                } else {
+                    this._note("未找到课程目录，等待页面加载", "warn");
+                }
             }
             this._bindStepNavigation();
             this._setStatus("已就绪");
+            this._applyUrlOverrides();
+            this._writeDiagnostics("init");
         },
 
         destroy: function () {
@@ -810,28 +928,172 @@ function createPlayerApp(PAGE, entryOptions) {
 
         /* ---------------- 课程目录 ---------------- */
 
+        /** 新版 mooc-ans 学生页的目录：小节是调用 getTeacherAjax(...) 的 <a>，
+         *  已经没有 #coursetree / .posCatalog_select。这里按链接重建一套只读目录模型，
+         *  供 _initCellData / 断点续播 / 下一节复用（模型元素仍指向真实 <a>，点击即可跳转）。 */
+        _currentChapterIdFromUrl: function () {
+            var match = /[?&]chapterId=(\d+)/.exec(String(safeValue(function () { return PAGE.location.search; }, "")));
+            return match ? match[1] : "";
+        },
+
+        _chapterIdFromHref: function (href) {
+            var match = /getTeacherAjax\(([^)]*)\)/.exec(String(href || ""));
+            if (!match) return "";
+            var args = match[1].split(",").map(function (part) {
+                return part.replace(/['"\s]/g, "");
+            });
+            return args.length >= 3 ? args[2] : "";
+        },
+
+        _buildLinkCatalogCells: function () {
+            var anchors = [];
+            try {
+                anchors = Array.prototype.slice.call(DOC.querySelectorAll('a[href*="getTeacherAjax"]'));
+            } catch (error) {
+                return [];
+            }
+            if (!anchors.length) return [];
+            var currentId = this._currentChapterIdFromUrl();
+            var groups = [];
+            var items = [];
+            var lastNo = null;
+            anchors.forEach(function (anchor) {
+                var title = normalizeText(anchor.textContent || "");
+                var match = /^(\d+)(?:[.．\s]|$)/.exec(title);
+                if (!title || !match) return;
+                var no = match[1];
+                var item = {
+                    anchor: anchor,
+                    title: title,
+                    no: no,
+                    chapterId: this._chapterIdFromHref(anchor.getAttribute("href"))
+                };
+                items.push(item);
+                if (!groups.length || no !== lastNo) {
+                    groups.push({ no: no, items: [] });
+                    lastNo = no;
+                }
+                groups[groups.length - 1].items.push(item);
+            }, this);
+            if (!groups.length) return [];
+            var active = null;
+            if (currentId) {
+                items.forEach(function (item) {
+                    if (item.chapterId === currentId) active = item;
+                });
+            }
+            if (!active) {
+                var pageTitle = normalizeText(String(safeValue(function () { return DOC.title; }, "")));
+                var heading = "";
+                try {
+                    var headingNode = DOC.querySelector(".videoTitle, .prev_title, .chapter_title, #videoTitle");
+                    heading = normalizeText((headingNode && headingNode.textContent) || "");
+                } catch (error) {
+                    heading = "";
+                }
+                items.forEach(function (item) {
+                    if (active) return;
+                    var suffix = normalizeText(item.title.replace(/^\d+(?:[.．]\d+)?\s*/, ""));
+                    if (!suffix || suffix.length < 2) return;
+                    if ((heading && heading.indexOf(suffix) >= 0) || pageTitle.indexOf(suffix) >= 0) active = item;
+                });
+            }
+            var cells = groups.map(function (group) {
+                var sections = group.items.map(function (item) {
+                    return {
+                        __xxtLink: item.anchor,
+                        title: item.title,
+                        chapterId: item.chapterId,
+                        classList: {
+                            contains: function (cls) {
+                                return cls === "posCatalog_active" ? item === active : false;
+                            }
+                        },
+                        querySelector: function (sel) {
+                            return sel === ".posCatalog_name" ? item.anchor : null;
+                        },
+                        querySelectorAll: function () {
+                            return [];
+                        },
+                        getAttribute: function (name) {
+                            return name === "title" ? item.title : item.anchor.getAttribute(name);
+                        },
+                        textContent: item.title
+                    };
+                });
+                return {
+                    __xxtChapter: true,
+                    title: "第" + group.no + "章",
+                    classList: {
+                        contains: function () {
+                            return false;
+                        }
+                    },
+                    querySelector: function () {
+                        return null;
+                    },
+                    querySelectorAll: function (sel) {
+                        return String(sel || "").indexOf(".posCatalog_select") >= 0 ? sections : [];
+                    },
+                    getAttribute: function () {
+                        return null;
+                    },
+                    textContent: "第" + group.no + "章"
+                };
+            });
+            this._linkCatalogSize = items.length;
+            return cells;
+        },
+
         _getTreeContainer: function () {
-            return DOC.querySelector("#coursetree") || null;
+            var direct = DOC.querySelector("#coursetree");
+            if (direct) return direct;
+            // 站点改版后目录容器可能换了 id/class：退化为「包含全部 posCatalog_select 的最近祖先」
+            var marks = DOC.querySelectorAll(".posCatalog_select");
+            if (!marks.length) return null;
+            var node = marks[0].parentElement;
+            var guard = 0;
+            while (node && node !== DOC.body && guard++ < 15) {
+                var containsAll = node.querySelectorAll(".posCatalog_select").length >= marks.length;
+                // 跳过 ul/ol：目录容器的第一层 <ul> 里放的是章节 <li>，容器本身应该是它的父元素
+                if (containsAll && node.tagName !== "UL" && node.tagName !== "OL") return node;
+                node = node.parentElement;
+            }
+            return null;
         },
 
         _getChapterNodes: function () {
             this._treeContainerEl = this._getTreeContainer() || this._treeContainerEl;
             var tree = this._treeContainerEl;
-            if (!tree) return [];
-            var firstUl = tree.querySelector(":scope > ul") || tree.querySelector("ul");
-            if (!firstUl) return [];
-            return Array.prototype.filter.call(firstUl.children, function (child) {
-                return child.tagName === "LI";
+            if (tree) {
+                var firstUl = tree.querySelector(":scope > ul") || tree.querySelector("ul");
+                if (firstUl) {
+                    var items = Array.prototype.filter.call(firstUl.children, function (child) {
+                        return child.tagName === "LI";
+                    });
+                    if (items.length) return items;
+                }
+            }
+            // 回退：把每个 .posCatalog_select.firstLayer 所在的 <li> 当作章节
+            var layers = Array.prototype.slice.call(DOC.querySelectorAll(".posCatalog_select.firstLayer"));
+            var chapters = [];
+            layers.forEach(function (layer) {
+                var li = layer;
+                while (li && li.tagName !== "LI") li = li.parentElement;
+                if (!li || li.tagName !== "LI" || chapters.indexOf(li) >= 0) return;
+                chapters.push(li);
             });
+            return chapters;
         },
 
         _getSectionNodes: function (chapter) {
-            if (!chapter) return [];
+            if (!chapter || typeof chapter.querySelectorAll !== "function") return [];
             return Array.prototype.slice.call(chapter.querySelectorAll(".posCatalog_select:not(.firstLayer)"));
         },
 
         _initCellData: function () {
             var cells = this._getChapterNodes();
+            if (!cells.length) cells = this._buildLinkCatalogCells();
             this._cellData.cells = cells;
             this._cellData.nCells = [];
             this._cellData.currentCellIndex = -1;
@@ -871,6 +1133,7 @@ function createPlayerApp(PAGE, entryOptions) {
             this._clearAfterEndedTimer();
             this._detachVideoEvents();
             if (key) this._note("进入小节：" + (this._cellData.currentVideoTitle || key), "info");
+            this._writeDiagnostics("section");
         },
 
         _currentSectionKey: function () {
@@ -1073,7 +1336,9 @@ function createPlayerApp(PAGE, entryOptions) {
         },
 
         _jumpToSection: function (cellIndex, nCellIndex) {
-            var chapters = this._getChapterNodes();
+            var chapters = this._cellData.cells && this._cellData.cells.length
+                ? this._cellData.cells
+                : this._getChapterNodes();
             var chapter = chapters[cellIndex];
             if (!chapter) return false;
             var sections = this._getSectionNodes(chapter);
@@ -1331,6 +1596,129 @@ function createPlayerApp(PAGE, entryOptions) {
             }, 800);
         },
 
+        /* ---------------- 自检 / 诊断 ---------------- */
+
+        /** 支持 URL 参数临时覆盖：?xxtrate=2 指定倍速、?xxtdiag=0 关闭自检写入。 */
+        _applyUrlOverrides: function () {
+            var search = String(safeValue(function () { return PAGE.location.search; }, ""));
+            var rateMatch = /[?&]xxtrate=([0-9]+(?:\.[0-9]+)?)/.exec(search);
+            if (rateMatch) {
+                var rate = Number(rateMatch[1]);
+                if (rate >= 0.25 && rate <= 16 && rate !== Number(settings.playbackRate)) {
+                    settings.playbackRate = rate;
+                    this._note("URL 参数指定播放速度 " + rate + "x", "info");
+                }
+            }
+            var diagMatch = /[?&]xxtdiag=([01])/.exec(search);
+            if (diagMatch) settings.diag = diagMatch[1] === "1";
+            var diagHudMatch = /[?&]xxtdiaghud=([01])/.exec(search);
+            if (diagHudMatch) settings.diagHud = diagHudMatch[1] === "1";
+        },
+
+        _collectDiagnostics: function (reason) {
+            var app = this;
+            var video = null;
+            try {
+                video = this._getVideoEl();
+            } catch (error) {
+                video = null;
+            }
+            var info = {
+                at: Date.now(),
+                reason: String(reason || ""),
+                version: String(OPTIONS.version || ""),
+                href: String(safeValue(function () { return PAGE.location.href; }, "")),
+                productName: String(OPTIONS.productName || ""),
+                settings: this.getSettings(),
+                dom: {
+                    readyState: String(DOC.readyState || ""),
+                    treeFound: Boolean(this._getTreeContainer()),
+                    counts: {},
+                    outline: domOutline(DOC, 45),
+                    catalogClasses: catalogClassTokens(DOC, 25)
+                },
+                frames: [],
+                video: null,
+                cells: {
+                    chapters: this._cellData && this._cellData.cells ? this._cellData.cells.length : 0,
+                    sections: this._cellData && this._cellData.nCells ? this._cellData.nCells.length : 0,
+                    chapterIndex: this._cellData ? this._cellData.currentCellIndex : -1,
+                    sectionIndex: this._cellData ? this._cellData.currentNCellIndex : -1,
+                    title: this._cellData ? this._cellData.currentVideoTitle : "",
+                    sectionKey: this._currentSectionKey(),
+                    linkCatalog: Number(this._linkCatalogSize) || 0
+                },
+                logs: this._logLines.slice(-8).map(function (line) {
+                    return line.level + ":" + line.text;
+                }),
+                positions: Object.keys(this._positions || {})
+            };
+            [
+                "#coursetree", ".coursetree", "[id*=coursetree]", "[class*=coursetree]",
+                ".posCatalog_select", ".posCatalog_active", "[class*=posCatalog]",
+                "#prevNextFocusNext", ".prev_white", "iframe", "video"
+            ].forEach(function (selector) {
+                info.dom.counts[selector] = safeValue(function () {
+                    return DOC.querySelectorAll(selector).length;
+                }, -1);
+            });
+            if (video) {
+                var lock = video.__xxtRateLock;
+                var nativeRate = null;
+                if (lock && lock.props && lock.props.playbackRate && lock.props.playbackRate.get) {
+                    nativeRate = safeValue(function () {
+                        return lock.props.playbackRate.get.call(video);
+                    }, null);
+                }
+                info.video = {
+                    isCurrent: video === this._videoEl,
+                    src: String(safeValue(function () { return video.currentSrc || video.src || ""; }, "")).slice(0, 200),
+                    currentTime: safeValue(function () { return Number(video.currentTime); }, 0) || 0,
+                    duration: safeValue(function () { return Number(video.duration); }, 0) || 0,
+                    rateReported: safeValue(function () { return video.playbackRate; }, null),
+                    rateNative: nativeRate,
+                    paused: Boolean(video.paused),
+                    muted: Boolean(video.muted),
+                    ended: Boolean(video.ended),
+                    readyState: safeValue(function () { return video.readyState; }, -1),
+                    lock: lock ? { rate: lock.rate, blocked: lock.blocked } : null
+                };
+            }
+            void app;
+            scanFrames(DOC, 0, "", info.frames);
+            return info;
+        },
+
+        _writeDiagnostics: function (reason) {
+            if (!this.configs.diag) return;
+            var info = null;
+            try {
+                info = this._collectDiagnostics(reason);
+                writeJson(DIAG_KEY, info);
+            } catch (error) {
+                /* 诊断写入失败不影响播放 */
+            }
+            if (!info || !this.configs.diagHud) return;
+            try {
+                var brief = {
+                    r: info.reason,
+                    v: info.version,
+                    href: String(info.href || "").slice(0, 240),
+                    tree: info.dom.treeFound,
+                    counts: info.dom.counts,
+                    cat: info.dom.catalogClasses,
+                    outline: info.dom.outline,
+                    cells: info.cells,
+                    video: info.video,
+                    frames: info.frames
+                };
+                els.diag.textContent = "DIAG " + JSON.stringify(brief);
+                if (els.panel) els.panel.setAttribute("data-diag", "1");
+            } catch (error) {
+                /* HUD 诊断渲染失败不影响播放 */
+            }
+        },
+
         /* ---------------- 播放控制 ---------------- */
 
         _applyPlaybackSettings: function (video) {
@@ -1347,11 +1735,99 @@ function createPlayerApp(PAGE, entryOptions) {
             var rate = Number(this.configs.playbackRate);
             if (rate > 0) {
                 try {
-                    video.playbackRate = rate;
+                    this._lockPlaybackRate(video, rate);
                 } catch (error) {
                     /* 部分浏览器限制倍速 */
                 }
             }
+        },
+
+        /* 向上查找某个属性在原型链上的描述符（用来拿到原生 playbackRate 的 setter） */
+        _propertyDescriptor: function (target, prop) {
+            var current = target;
+            while (current) {
+                var desc = Object.getOwnPropertyDescriptor(current, prop);
+                if (desc) {
+                    return desc;
+                }
+                current = Object.getPrototypeOf(current);
+            }
+            return null;
+        },
+
+        /*
+         * 学习通新版播放器会在 ratechange / timeupdate 时把倍速强制改回 1 倍，
+         * 只在外部每帧去赋值是改不过来的（会和播放器来回打架，实际仍是 1 倍速）。
+         * 这里在 <video> 实例上定义自己的 playbackRate/defaultPlaybackRate，
+         * 外部写入直接忽略，只有本脚本内部通过原生 setter 才真正改到底层媒体元素。
+         */
+        _lockPlaybackRate: function (video, rate) {
+            if (!video || !(rate > 0)) return;
+            var self = this;
+            var state = video.__xxtRateLock;
+            if (!state) {
+                state = {
+                    rate: Number(rate),
+                    applying: false,
+                    blocked: 0,
+                    props: {
+                        playbackRate: this._propertyDescriptor(video, "playbackRate"),
+                        defaultPlaybackRate: this._propertyDescriptor(video, "defaultPlaybackRate")
+                    }
+                };
+                var install = function (prop) {
+                    var desc = state.props[prop];
+                    if (!desc || !desc.get || !desc.set) return;
+                    try {
+                        Object.defineProperty(video, prop, {
+                            configurable: true,
+                            enumerable: false,
+                            get: function () {
+                                return state.rate;
+                            },
+                            set: function (value) {
+                                if (state.applying) {
+                                    state.rate = Number(value);
+                                    return;
+                                }
+                                // 播放器想把倍速改回去：丢弃，并记一次日志，方便确认拦截生效
+                                state.blocked += 1;
+                                if (!state.warned) {
+                                    state.warned = true;
+                                    try {
+                                        self._note("播放器尝试把倍速改回 " + value + " 倍，已拦截", "warn");
+                                    } catch (error) {
+                                        /* 忽略 */
+                                    }
+                                }
+                            }
+                        });
+                    } catch (error) {
+                        /* 某些浏览器禁止重定义，退化为普通赋值 */
+                    }
+                };
+                install("playbackRate");
+                install("defaultPlaybackRate");
+                video.__xxtRateLock = state;
+            }
+            state.rate = Number(rate);
+            state.applying = true;
+            try {
+                var props = ["playbackRate", "defaultPlaybackRate"];
+                for (var i = 0; i < props.length; i++) {
+                    var desc = state.props[props[i]];
+                    if (desc && desc.set) {
+                        desc.set.call(video, state.rate);
+                    }
+                }
+            } catch (error) {
+                try {
+                    video.playbackRate = state.rate;
+                } catch (ignored) {
+                    /* 忽略 */
+                }
+            }
+            state.applying = false;
         },
 
         play: function () {
@@ -1483,12 +1959,19 @@ function createPlayerApp(PAGE, entryOptions) {
                     }
                 }
                 var rate = Number(this.configs.playbackRate);
-                if (rate > 0 && Number(video.playbackRate) !== rate) {
+                if (rate > 0 && !video.__xxtRateLock) {
                     try {
-                        video.playbackRate = rate;
+                        this._lockPlaybackRate(video, rate);
                     } catch (error) {
                         /* 忽略 */
                     }
+                }
+            }
+            if (this.configs.diag) {
+                var now = Date.now();
+                if (!this._lastDiagAt || now - this._lastDiagAt > 5000) {
+                    this._lastDiagAt = now;
+                    this._writeDiagnostics("tick");
                 }
             }
             this._updateHud();
@@ -1828,11 +2311,23 @@ function createPlayerApp(PAGE, entryOptions) {
         return app;
     }
 
+    /** 判断当前是否课程播放页：老版看 #coursetree，新版（mooc-ans）看调用
+     *  getTeacherAjax 的目录链接或 .posCatalog_select。 */
+    function hasCourseCatalog() {
+        if (document.querySelector("#coursetree")) return true;
+        if (document.querySelector(".posCatalog_select")) return true;
+        try {
+            return Boolean(document.querySelector('a[href*="getTeacherAjax"]'));
+        } catch (error) {
+            return false;
+        }
+    }
+
     function waitForCoursePage() {
         var attempts = 0;
         var maxAttempts = 20;
         PAGE[BOOT_TIMER_KEY] = setInterval(function () {
-            if (document.querySelector("#coursetree")) {
+            if (hasCourseCatalog()) {
                 clearInterval(PAGE[BOOT_TIMER_KEY]);
                 PAGE[BOOT_TIMER_KEY] = null;
                 initializePlayer();
@@ -1843,14 +2338,14 @@ function createPlayerApp(PAGE, entryOptions) {
                 clearInterval(PAGE[BOOT_TIMER_KEY]);
                 PAGE[BOOT_TIMER_KEY] = null;
                 console.error(
-                    "%c脚本启动超时：未检测到课程目录（#coursetree）。请确认当前处于课程播放页。",
+                    "%c脚本启动超时：未检测到课程目录。请确认当前处于课程播放页。",
                     "color:#F44336;font-weight:bold"
                 );
             }
         }, 1000);
     }
 
-    if (document.querySelector("#coursetree")) {
+    if (hasCourseCatalog()) {
         initializePlayer();
     } else {
         waitForCoursePage();

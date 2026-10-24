@@ -24,7 +24,7 @@ import { fileURLToPath } from 'node:url';
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const SRC_DIR = resolve(ROOT, 'src');
 
-export const VERSION = '3.5.1';
+export const VERSION = '3.5.4';
 
 const INCLUDE_PATTERN = /^[ \t]*\/\* @@INCLUDE:([A-Za-z0-9._-]+)@@ \*\/[ \t]*$/gm;
 
@@ -83,7 +83,7 @@ export function inlineIncludes(source, origin) {
         throw new Error(`${origin} 内仍有未展开的 @@INCLUDE@@ 标记`);
     }
     INCLUDE_PATTERN.lastIndex = 0;
-    return result;
+    return result.replace(/__XXT_VERSION__/g, VERSION);
 }
 
 /** 生成 v3_optimized.js 内容（控制台版）。 */

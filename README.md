@@ -37,9 +37,11 @@
 | **悬浮球菜单** | 右下角圆形球（可拖动、记住位置）：状态、章节、第 n/N 个视频、进度条、已完成节数、最近日志；菜单内含倍速（0.75x–2.0x）、暂停/继续、下一节、重置进度，以及 4 个持久化开关 |
 | **设置持久化** | 所有开关、倍速、悬浮球位置/展开状态写入 `localStorage`，下次打开仍然生效；`app.configs.xxx = 值` 直接赋值即持久化 |
 | **课程导航** | 自动从「学习目标」切到「视频」步骤；视频播完自动切下一节 / 下一章；纯课件小节默认不跳过（可配置） |
+| **新版课程页适配** | 学习通新版播放页（`/mooc-ans/mycourse/studentstudy`，没有老版的 `#coursetree`）也能解析目录：优先读 `#coursetree`，找不到时从 `a[href*="getTeacherAjax"]` 的小节链接重建「章节 → 小节」结构，断点续播/多段接力/已完成节数照常工作 |
+| **倍速锁定** | 部分播放器会自己把 `playbackRate` 改回去；脚本会按设置的倍速改回来，并在日志里记「播放器尝试把倍速改回 X 倍，已拦截」 |
 | **章节测验（基础版）** | 遇到章节测验步骤时自动跳过/放行，不阻塞视频推进 |
 | **章节测验（DeepSeek 版）** | 自动识别题目、请求本地 DeepSeek 服务作答、按题型选择选项、提交并进入下一节；可选，见 [deepseek-console/README.md](deepseek-console/README.md) |
-| **零依赖构建 + 测试** | `src/` 单份源码内联生成四份产物，构建产物可校验一致性；播放核心有 jsdom 单元测试，接口层、本地服务、开机自启各有独立测试（共 34 个用例） |
+| **零依赖构建 + 测试** | `src/` 单份源码内联生成四份产物，构建产物可校验一致性；播放核心有 jsdom 单元测试（含新版链接式目录的用例），接口层、本地服务、开机自启各有独立测试（共 39 个用例） |
 
 ### 兼容性
 
@@ -163,6 +165,9 @@ node tests/verify.mjs         # 校验产物与源码同步且语法有效
 | 装了油猴脚本但页面上毫无反应（没有悬浮球） | ① 浏览器「扩展」页 → Tampermonkey「详情」→ 打开 **「允许用户脚本」**（MV3 必须）；② 确认本地服务在跑：浏览器打开 `http://127.0.0.1:37841/health` 应返回 JSON，不通就看 `deepseek-console/service.log` |
 | 开机后本地服务没起来 / 自启看起来失效 | 多半是 ZIP 文件带「来自 Internet」标记，隐藏窗口下的「无法验证发布者」弹框你看不到：在解压目录执行 `Get-ChildItem -Recurse -File \| Unblock-File`，再重新双击 `install-autostart.cmd` |
 | 以前能用，最近打开播放页不出悬浮球 | 学习通新版把播放页换成了 `mooc1-2.chaoxing.com/mooc-ans/mycourse/studentstudy` 这类地址（路径里多了 `/mooc-ans` 段），旧版 `@match` 匹配不到。升到 **3.5.1+** 即可：地址栏打开 `http://127.0.0.1:37841/xuexitong-console.ready.user.js` → 在 Tampermonkey 页面点「更新」 |
+| 有新版本时 Tampermonkey 的「更新用户脚本」页点了没反应 | 页面上那排按钮顺序是「更新 / 取消 / 禁用更新」，最左边那个才是**更新**；点错会点到「禁用更新」（脚本就被停用了）。确认装对了版本：重开 `.../xuexitong-console.ready.user.js`，标题下面「已安装版本」应等于脚本标题里的版本号 |
+| 悬浮面板里「章节」显示「未定位到目录」，已完成 0 节 | 页面目录结构与脚本预期不符。**3.5.4+** 已支持新版 `/mooc-ans` 链接式目录（`a[href*="getTeacherAjax"]`）；升级后刷新即可。仍不行时加 `?xxtdiaghud=1` 把面板底部的 `DIAG {...}` 那一行截图反馈 |
+| 倍速选了 2.0x，视频还是原速 / 自己跳回 1x | 部分播放器会主动改回倍速。脚本已做倍速锁定（日志会显示「播放器尝试把倍速改回 X 倍，已拦截」）；若日志一直拦不住，用 `?xxtrate=2` 参数强制一次，再在面板里确认一下当前倍速 |
 | 每次都要手动粘贴 ready.js，嫌麻烦 | 改成油猴全自动：装 Tampermonkey → 打开 `http://127.0.0.1:37841/xuexitong-console.ready.user.js` 安装 → 打开「允许用户脚本」→ 双击 `install-autostart.cmd`。以后只需打开学习通网页 |
 | 端口 `37841` 已被占用 | 说明服务已经在运行（多半是开机自启那个），不用再双击 cmd，直接打开学习通页面即可 |
 | 一直卡在纯课件小节 | 学习通会提示有任务未完成，默认不跳过：确认无需处理后 `app.nextUnit()`，或 `app.configs.autoAdvanceNoVideo = true` |
@@ -213,8 +218,20 @@ app.removeHud();                         // 移除悬浮球（app.updateSettings
 | `videoCheckInterval` | `1000` | 播放状态检查间隔（毫秒） |
 | `guardNoProgressMs` | `7000` | 播放卡住多久后尝试恢复 |
 | `retryInterval` / `maxRetries` | `2000` / `10` | 失败重试间隔与次数 |
+| `diag` | `true` | 自检：把页面/视频/目录诊断信息写进 `localStorage`（排障用，不影响播放） |
+| `diagHud` | `false` | 在悬浮面板底部显示一行诊断文本（也可用下面 `?xxtdiaghud=1` 临时打开） |
 
-数据存在三个 key 里：`xuexitong.helper.settings.v1`、`xuexitong.helper.progress.v1`、`xuexitong.helper.positions.v1`。
+数据存在四个 key 里：`xuexitong.helper.settings.v1`、`xuexitong.helper.progress.v1`、`xuexitong.helper.positions.v1`、`xuexitong.helper.diag.v1`（诊断信息，可随手清掉）。
+
+### 隐藏 URL 参数（排障用，平时不用管）
+
+在播放页地址后面追加参数再回车，优先级高于本地设置：
+
+| 参数 | 作用 |
+| --- | --- |
+| `?xxtrate=2` | 临时把播放倍速设为 2（支持 0.25–16），并持久化到设置里 |
+| `?xxtdiag=0` / `?xxtdiag=1` | 关闭 / 打开诊断信息写入 |
+| `?xxtdiaghud=1` | 把一行精简诊断（目录是否解析到、通道计数、当前视频倍速等）直接显示在悬浮面板底部，方便截图排查 |
 
 ## 已知行为说明
 

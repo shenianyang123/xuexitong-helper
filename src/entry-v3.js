@@ -39,11 +39,23 @@
         return app;
     }
 
+    /** 判断当前是否课程播放页：老版看 #coursetree，新版（mooc-ans）看调用
+     *  getTeacherAjax 的目录链接或 .posCatalog_select。 */
+    function hasCourseCatalog() {
+        if (document.querySelector("#coursetree")) return true;
+        if (document.querySelector(".posCatalog_select")) return true;
+        try {
+            return Boolean(document.querySelector('a[href*="getTeacherAjax"]'));
+        } catch (error) {
+            return false;
+        }
+    }
+
     function waitForCoursePage() {
         var attempts = 0;
         var maxAttempts = 20;
         PAGE[BOOT_TIMER_KEY] = setInterval(function () {
-            if (document.querySelector("#coursetree")) {
+            if (hasCourseCatalog()) {
                 clearInterval(PAGE[BOOT_TIMER_KEY]);
                 PAGE[BOOT_TIMER_KEY] = null;
                 initializePlayer();
@@ -54,14 +66,14 @@
                 clearInterval(PAGE[BOOT_TIMER_KEY]);
                 PAGE[BOOT_TIMER_KEY] = null;
                 console.error(
-                    "%c脚本启动超时：未检测到课程目录（#coursetree）。请确认当前处于课程播放页。",
+                    "%c脚本启动超时：未检测到课程目录。请确认当前处于课程播放页。",
                     "color:#F44336;font-weight:bold"
                 );
             }
         }, 1000);
     }
 
-    if (document.querySelector("#coursetree")) {
+    if (hasCourseCatalog()) {
         initializePlayer();
     } else {
         waitForCoursePage();
