@@ -1,13 +1,11 @@
 // ==UserScript==
 // @name         学习通自动刷课助手（DeepSeek 版）
 // @namespace    local.codex.xuexitong
-// @version      3.5.0
+// @version      3.5.1
 // @description  自动播放、多视频串联、断点续播、悬浮球控制，并可用本地服务自动作答章节测验
 // @author       Codex
-// @match        *://mooc1.chaoxing.com/mycourse/studentstudy*
-// @match        *://mooc1-1.chaoxing.com/mycourse/studentstudy*
-// @match        *://mooc2-ans.chaoxing.com/mycourse/studentstudy*
-// @match        *://*.chaoxing.com/mycourse/studentstudy*
+// @match        *://*.chaoxing.com/*mycourse/studentstudy*
+// @match        *://chaoxing.com/*mycourse/studentstudy*
 // @run-at       document-idle
 // @grant        none
 // @noframes
@@ -2286,7 +2284,7 @@ console.error('章节测验自动作答停止:', error);
                     "    try {\n" +
                     "        var page = window.opener;\n" +
                     "        if (!page || page.closed) { clearInterval(window.__xuexitongKeeperTimer); window.close(); return; }\n" +
-                    "        if (!/^https:\\/\\/([a-z0-9-]+\\.)*chaoxing\\.com\\/mycourse\\/studentstudy/i.test(page.location.href)) return;\n" +
+                    "        if (!/^https:\\/\\/([a-z0-9-]+\\.)*chaoxing\\.com(\\/[a-z0-9-]+)*\\/mycourse\\/studentstudy/i.test(page.location.href)) return;\n" +
                     "        if (page.location.href !== window.__xuexitongLastUrl) {\n" +
                     "            window.__xuexitongLastUrl = page.location.href;\n" +
                     "            window.__xuexitongLastInjectionAt = Date.now() - 30000;\n" +

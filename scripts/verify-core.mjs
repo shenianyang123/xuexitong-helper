@@ -101,8 +101,10 @@ export function verifyArtifacts() {
                 problems.push('xuexitong-console.user.js：负载缺少令牌占位符 __LOCAL_TOKEN__');
             }
         }
-        if (!/@match\s+\*:\/\/mooc1\.chaoxing\.com\/mycourse\/studentstudy\*/.test(content)) {
-            problems.push('xuexitong-console.user.js：缺少 studentstudy 页面 @match');
+        // 新版学习通把播放页换到了 mooc1-2/mooc-ans 之类的路径下，
+        // 因此 @match 必须是 *://*.chaoxing.com/*mycourse/studentstudy*（路径前缀可带任意段）。
+        if (!/@match\s+\*:\/\/\*\.chaoxing\.com\/\*mycourse\/studentstudy\*/.test(content)) {
+            problems.push('xuexitong-console.user.js：缺少 studentstudy 页面 @match（应为 *://*.chaoxing.com/*mycourse/studentstudy*）');
         }
     }
 

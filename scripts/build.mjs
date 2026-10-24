@@ -24,7 +24,7 @@ import { fileURLToPath } from 'node:url';
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const SRC_DIR = resolve(ROOT, 'src');
 
-export const VERSION = '3.5.0';
+export const VERSION = '3.5.1';
 
 const INCLUDE_PATTERN = /^[ \t]*\/\* @@INCLUDE:([A-Za-z0-9._-]+)@@ \*\/[ \t]*$/gm;
 
@@ -34,9 +34,8 @@ const USER_SCRIPT_METADATA = `// ==UserScript==
 // @version      ${VERSION}
 // @description  自动播放、多视频串联、断点续播，并在页面结构异常时安全停止
 // @author       Codex
-// @match        *://mooc1.chaoxing.com/mycourse/studentstudy*
-// @match        *://*.chaoxing.com/mycourse/studentstudy*
-// @match        *://*.chaoxing.com/mooc2-ans/mycourse/studentstudy*
+// @match        *://*.chaoxing.com/*mycourse/studentstudy*
+// @match        *://chaoxing.com/*mycourse/studentstudy*
 // @run-at       document-idle
 // @grant        none
 // @noframes
@@ -50,10 +49,8 @@ const CONSOLE_USER_METADATA = `// ==UserScript==
 // @version      ${VERSION}
 // @description  自动播放、多视频串联、断点续播、悬浮球控制，并可用本地服务自动作答章节测验
 // @author       Codex
-// @match        *://mooc1.chaoxing.com/mycourse/studentstudy*
-// @match        *://mooc1-1.chaoxing.com/mycourse/studentstudy*
-// @match        *://mooc2-ans.chaoxing.com/mycourse/studentstudy*
-// @match        *://*.chaoxing.com/mycourse/studentstudy*
+// @match        *://*.chaoxing.com/*mycourse/studentstudy*
+// @match        *://chaoxing.com/*mycourse/studentstudy*
 // @run-at       document-idle
 // @grant        none
 // @noframes

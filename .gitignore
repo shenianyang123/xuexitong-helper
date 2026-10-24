@@ -46,3 +46,8 @@ deepseek-console/.local-token
 
 # 视觉预览工具产物
 .dsh-vision-router/
+
+# 临时文件（调试/一次性脚本一律不提交，避免误把令牌、日志带进仓库）
+/.tmp-*/
+/.tmp-*
+/tmp-*

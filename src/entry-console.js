@@ -86,7 +86,7 @@
                     "    try {\n" +
                     "        var page = window.opener;\n" +
                     "        if (!page || page.closed) { clearInterval(window.__xuexitongKeeperTimer); window.close(); return; }\n" +
-                    "        if (!/^https:\\/\\/([a-z0-9-]+\\.)*chaoxing\\.com\\/mycourse\\/studentstudy/i.test(page.location.href)) return;\n" +
+                    "        if (!/^https:\\/\\/([a-z0-9-]+\\.)*chaoxing\\.com(\\/[a-z0-9-]+)*\\/mycourse\\/studentstudy/i.test(page.location.href)) return;\n" +
                     "        if (page.location.href !== window.__xuexitongLastUrl) {\n" +
                     "            window.__xuexitongLastUrl = page.location.href;\n" +
                     "            window.__xuexitongLastInjectionAt = Date.now() - 30000;\n" +

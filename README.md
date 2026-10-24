@@ -162,6 +162,7 @@ node tests/verify.mjs         # 校验产物与源码同步且语法有效
 | 方式三提示 `本地令牌不匹配` / `尚未写入本地服务令牌` | 粘的是 `xuexitong-console.js`（模板）而不是 `xuexitong-console.ready.js`；或服务重启过，重新复制新的 ready 文件（用油猴全自动则自动更新，不会碰到这个问题） |
 | 装了油猴脚本但页面上毫无反应（没有悬浮球） | ① 浏览器「扩展」页 → Tampermonkey「详情」→ 打开 **「允许用户脚本」**（MV3 必须）；② 确认本地服务在跑：浏览器打开 `http://127.0.0.1:37841/health` 应返回 JSON，不通就看 `deepseek-console/service.log` |
 | 开机后本地服务没起来 / 自启看起来失效 | 多半是 ZIP 文件带「来自 Internet」标记，隐藏窗口下的「无法验证发布者」弹框你看不到：在解压目录执行 `Get-ChildItem -Recurse -File \| Unblock-File`，再重新双击 `install-autostart.cmd` |
+| 以前能用，最近打开播放页不出悬浮球 | 学习通新版把播放页换成了 `mooc1-2.chaoxing.com/mooc-ans/mycourse/studentstudy` 这类地址（路径里多了 `/mooc-ans` 段），旧版 `@match` 匹配不到。升到 **3.5.1+** 即可：地址栏打开 `http://127.0.0.1:37841/xuexitong-console.ready.user.js` → 在 Tampermonkey 页面点「更新」 |
 | 每次都要手动粘贴 ready.js，嫌麻烦 | 改成油猴全自动：装 Tampermonkey → 打开 `http://127.0.0.1:37841/xuexitong-console.ready.user.js` 安装 → 打开「允许用户脚本」→ 双击 `install-autostart.cmd`。以后只需打开学习通网页 |
 | 端口 `37841` 已被占用 | 说明服务已经在运行（多半是开机自启那个），不用再双击 cmd，直接打开学习通页面即可 |
 | 一直卡在纯课件小节 | 学习通会提示有任务未完成，默认不跳过：确认无需处理后 `app.nextUnit()`，或 `app.configs.autoAdvanceNoVideo = true` |

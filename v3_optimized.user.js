@@ -1,12 +1,11 @@
 // ==UserScript==
 // @name         学习通自动刷课脚本 V3 稳定版
 // @namespace    local.codex.xuexitong
-// @version      3.5.0
+// @version      3.5.1
 // @description  自动播放、多视频串联、断点续播，并在页面结构异常时安全停止
 // @author       Codex
-// @match        *://mooc1.chaoxing.com/mycourse/studentstudy*
-// @match        *://*.chaoxing.com/mycourse/studentstudy*
-// @match        *://*.chaoxing.com/mooc2-ans/mycourse/studentstudy*
+// @match        *://*.chaoxing.com/*mycourse/studentstudy*
+// @match        *://chaoxing.com/*mycourse/studentstudy*
 // @run-at       document-idle
 // @grant        none
 // @noframes
