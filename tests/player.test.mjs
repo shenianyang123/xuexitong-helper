@@ -383,6 +383,33 @@ test('目录容器没有 #coursetree 时也能回退解析（站点改版兜底�
     }
 });
 
+test('旧版页面 .prev_title 是小节名时，按知识卡 iframe 的 num 识别章节测验', () => {
+    const html = `<!doctype html>
+<html><head><title>学习通</title></head>
+<body>
+  <div class="prev_title">大学生心理健康状况及成因</div>
+  <div class="prev_white">大学生心理健康状况及成因</div>
+  <a href="javascript:getTeacherAjax('268192668','157461710','1266657585')">2.1 大学生心理健康状况及成因</a>
+  <iframe src="/mooc-ans/knowledge/cards?clazzid=157461710&courseid=268192668&num=1&chapterId=1266657585"></iframe>
+  <video id="video_html5_api"></video>
+</body></html>`;
+    const { dom, window, app } = createPage({
+        html,
+        url: 'https://mooc1.chaoxing.com/mycourse/studentstudy?chapterId=1266657585&courseId=268192668&clazzid=157461710',
+    });
+    try {
+        assert.equal(app._currentStepTitle(), '章节测验', 'num=1 的知识卡应判为章节测验，而不是 .prev_title 的小节名');
+        assert.equal(app._isChapterTest(), true);
+        const iframe = window.document.querySelector('iframe');
+        iframe.setAttribute('src', '/mooc-ans/knowledge/cards?clazzid=157461710&courseid=268192668&num=0&chapterId=1266657585');
+        assert.equal(app._currentStepTitle(), '视频', 'num=0 的知识卡应判为视频');
+        assert.equal(app._isChapterTest(), false);
+    } finally {
+        window.app?.destroy();
+        dom.window.close();
+    }
+});
+
 test('新版页面目录只有 getTeacherAjax 链接时也能解析出章节与当前小节', () => {
     const { dom, window, app } = createPage({
         html: LINK_PAGE_HTML,

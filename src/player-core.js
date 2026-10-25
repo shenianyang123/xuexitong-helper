@@ -2065,13 +2065,9 @@ function createPlayerApp(PAGE, entryOptions) {
         /* ---------------- 步骤 / 章节切换 ---------------- */
 
         _currentStepTitle: function () {
-            try {
-                var titleNode = DOC.getElementsByClassName("prev_title")[0];
-                var text = normalizeText(titleNode ? titleNode.textContent : "");
-                if (text) return text;
-            } catch (error) {
-                /* 忽略 */
-            }
+            /* 旧版学生页的 .prev_title 显示的是“小节名”（如“大学生心理健康状况及成因”），
+             * 并不写“章节测验”，只按它判断会把测验页当成视频页，于是卡在“准备切换下一节”。
+             * 知识卡 iframe 的 num 参数才是可靠的步骤标识：0=视频，1=章节测验。 */
             var card = null;
             try {
                 card = DOC.querySelector('iframe[src*="/knowledge/cards"]');
@@ -2087,6 +2083,13 @@ function createPlayerApp(PAGE, entryOptions) {
                 } catch (error) {
                     /* 忽略 */
                 }
+            }
+            try {
+                var titleNode = DOC.getElementsByClassName("prev_title")[0];
+                var text = normalizeText(titleNode ? titleNode.textContent : "");
+                if (text) return text;
+            } catch (error) {
+                /* 忽略 */
             }
             return "";
         },

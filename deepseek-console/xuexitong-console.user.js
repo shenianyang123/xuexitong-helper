@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         学习通自动刷课助手（DeepSeek 版）
 // @namespace    local.codex.xuexitong
-// @version      3.5.8
+// @version      3.5.9
 // @description  自动播放、多视频串联、断点续播、悬浮球控制，并可用本地服务自动作答章节测验
 // @author       Codex
 // @match        *://*.chaoxing.com/*mycourse/studentstudy*
@@ -68,7 +68,7 @@ function createPlayerApp(PAGE, entryOptions) {
 
     var OPTIONS = Object.assign({
         productName: "学习通自动播放助手",
-        version: "3.5.8",
+        version: "3.5.9",
         playbackRate: 1.5,
         muteVideo: false,
         autoResume: true
@@ -2123,13 +2123,9 @@ function createPlayerApp(PAGE, entryOptions) {
         /* ---------------- 步骤 / 章节切换 ---------------- */
 
         _currentStepTitle: function () {
-            try {
-                var titleNode = DOC.getElementsByClassName("prev_title")[0];
-                var text = normalizeText(titleNode ? titleNode.textContent : "");
-                if (text) return text;
-            } catch (error) {
-                /* 忽略 */
-            }
+            /* 旧版学生页的 .prev_title 显示的是“小节名”（如“大学生心理健康状况及成因”），
+             * 并不写“章节测验”，只按它判断会把测验页当成视频页，于是卡在“准备切换下一节”。
+             * 知识卡 iframe 的 num 参数才是可靠的步骤标识：0=视频，1=章节测验。 */
             var card = null;
             try {
                 card = DOC.querySelector('iframe[src*="/knowledge/cards"]');
@@ -2145,6 +2141,13 @@ function createPlayerApp(PAGE, entryOptions) {
                 } catch (error) {
                     /* 忽略 */
                 }
+            }
+            try {
+                var titleNode = DOC.getElementsByClassName("prev_title")[0];
+                var text = normalizeText(titleNode ? titleNode.textContent : "");
+                if (text) return text;
+            } catch (error) {
+                /* 忽略 */
             }
             return "";
         },

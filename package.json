@@ -1,6 +1,6 @@
 {
   "name": "xuexitong-script",
-  "version": "3.5.8",
+  "version": "3.5.9",
   "private": true,
   "description": "学习通自动刷课（多视频串联 / 断点续播 / 控制面板）+ DeepSeek 章节测验自动作答",
   "type": "module",
