@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         学习通自动刷课助手（DeepSeek 版）
 // @namespace    local.codex.xuexitong
-// @version      3.5.9
+// @version      3.5.10
 // @description  自动播放、多视频串联、断点续播、悬浮球控制，并可用本地服务自动作答章节测验
 // @author       Codex
 // @match        *://*.chaoxing.com/*mycourse/studentstudy*
@@ -68,7 +68,7 @@ function createPlayerApp(PAGE, entryOptions) {
 
     var OPTIONS = Object.assign({
         productName: "学习通自动播放助手",
-        version: "3.5.9",
+        version: "3.5.10",
         playbackRate: 1.5,
         muteVideo: false,
         autoResume: true
@@ -3058,25 +3058,72 @@ console.error('章节测验自动作答停止:', error);
 
     if (!startedByKeeper) installNavigationKeeper();
 
-    var healthSignal = undefined;
-    try {
-        if (typeof AbortSignal !== "undefined" && typeof AbortSignal.timeout === "function") {
-            healthSignal = AbortSignal.timeout(5000);
-        }
-    } catch (error) {
-        healthSignal = undefined;
+    /* 开机后「本地服务」往往比浏览器晚几秒起来。旧版只请求一次 /health，
+     * 失败就彻底不启动（页面看起来像插件没装），所以这里改成每 2 秒重试，
+     * 最多 60 秒；真的连不上再显示一个红色提示条，而不是静默什么都不做。 */
+    var HEALTH_RETRY_MS = 2000;
+    var HEALTH_MAX_ATTEMPTS = 30;
+    var healthAttempt = 0;
+    var healthBadge = null;
+
+    function removeHealthBadge() {
+        if (healthBadge && healthBadge.parentNode) healthBadge.parentNode.removeChild(healthBadge);
+        healthBadge = null;
     }
 
-    fetch(LOCAL_URL + "/health", {
-        headers: { "X-Xuexitong-Token": LOCAL_TOKEN },
-        signal: healthSignal
-    }).then(function (response) {
-        if (!response.ok) throw new Error("HTTP " + response.status);
-        console.log("DeepSeek 本地服务已连接");
-        waitForCoursePage();
-    }).catch(function (error) {
-        console.error("DeepSeek 本地服务不可用，请先启动服务并检查 Edge 的本地网络访问权限:", error);
-    });
+    function showHealthBadge(lastError) {
+        try {
+            if (healthBadge) return;
+            healthBadge = PAGE.document.createElement("div");
+            healthBadge.id = "xuexitong-helper-service-badge";
+            healthBadge.style.cssText = [
+                "position:fixed", "left:12px", "bottom:12px", "z-index:2147483600",
+                "max-width:420px", "padding:10px 12px", "border-radius:8px",
+                "background:#fff3cd", "border:1px solid #f0ad4e", "color:#7a4b00",
+                "font:13px/1.5 sans-serif", "box-shadow:0 2px 8px rgba(0,0,0,.2)",
+                "white-space:pre-line"
+            ].join(";");
+            healthBadge.textContent =
+                "学习通助手：本地服务没有运行，脚本已暂停。\n" +
+                "请双击 deepseek-console\\install-autostart.cmd（或 start-local-service.cmd --background），" +
+                "然后刷新本页。\n" +
+                "（" + String((lastError && lastError.message) || lastError || "") + "）";
+            (PAGE.document.body || PAGE.document.documentElement).appendChild(healthBadge);
+        } catch (error) {
+            /* 提示条失败不影响主流程 */
+        }
+    }
+
+    function checkHealth() {
+        healthAttempt += 1;
+        var healthSignal = undefined;
+        try {
+            if (typeof AbortSignal !== "undefined" && typeof AbortSignal.timeout === "function") {
+                healthSignal = AbortSignal.timeout(5000);
+            }
+        } catch (error) {
+            healthSignal = undefined;
+        }
+        fetch(LOCAL_URL + "/health", {
+            headers: { "X-Xuexitong-Token": LOCAL_TOKEN },
+            signal: healthSignal
+        }).then(function (response) {
+            if (!response.ok) throw new Error("HTTP " + response.status);
+            removeHealthBadge();
+            console.log("DeepSeek 本地服务已连接");
+            waitForCoursePage();
+        }).catch(function (error) {
+            if (healthAttempt >= HEALTH_MAX_ATTEMPTS) {
+                console.error("DeepSeek 本地服务不可用，请先启动服务并检查 Edge 的本地网络访问权限:", error);
+                showHealthBadge(error);
+                return;
+            }
+            console.warn("本地服务暂未就绪，2 秒后重试（" + healthAttempt + "/" + HEALTH_MAX_ATTEMPTS + "）");
+            setTimeout(checkHealth, HEALTH_RETRY_MS);
+        });
+    }
+
+    checkHealth();
 
     function installNavigationKeeper() {
         var keeper;
