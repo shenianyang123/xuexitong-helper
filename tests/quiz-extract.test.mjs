@@ -242,3 +242,73 @@ test('下一节：页面上没有「下一节」按钮时按课程目录跳到�
     }
 });
 
+/** 平台「当前章节还有任务点未完成」提示框 + 页面底部「下一节」。 */
+function jobTipPage(visible = true) {
+    return `<!doctype html>
+<html><head><title>学生学习页面</title></head>
+<body>
+  <div class="left">
+    <div id="jobFinishTip" class="AlertCon02"${visible ? '' : ' style="display:none"'}>
+      <div class="popHead">提示</div>
+      <div class="popContent">当前章节还有任务点未完成，是否去完成？</div>
+      <div class="popBottom">
+        <a class="bluebtn02 prebutton next" href="javascript:void(0)">下一节</a>
+        <a class="bluebtn02 prebutton next" href="javascript:void(0)">上一节</a>
+        <a class="graybtn02 marleft10 next" href="javascript:void(0)">去学习</a>
+      </div>
+    </div>
+    <div class="orientationright next" id="prevNextFocusNext">下一节</div>
+  </div>
+</body></html>`;
+}
+
+test('下一节：平台弹「当前章节还有任务点未完成」时点「去学习」而不是干等卡住', async () => {
+    const { app, window, restore } = loadQuizAutomation(jobTipPage(true));
+    const clicks = [];
+    try {
+        window.Element.prototype.scrollIntoView = function () {};
+        window.document.addEventListener('click', (event) => {
+            const el = event.target;
+            clicks.push((el.innerText || el.textContent || '').trim());
+        });
+        assert.ok(app._quizExtract.jobTip(), '应识别出「任务点未完成」弹窗');
+        await app.nextUnit();
+        await new Promise((resolve) => setTimeout(resolve, 100));
+        assert.equal(clicks.filter((text) => text === '去学习').length, 1, '应点击弹窗里的「去学习」');
+        assert.equal(clicks.filter((text) => text === '下一节').length, 0, '弹窗挡住时不应去点页面底部的「下一节」');
+    } finally {
+        restore();
+    }
+});
+
+test('下一节：点「下一节」后才弹出任务点提示框，也要能点掉弹窗不卡住', async () => {
+    const { app, window, restore } = loadQuizAutomation(jobTipPage(false));
+    const clicks = [];
+    try {
+        window.Element.prototype.scrollIntoView = function () {};
+        // jsdom 没有布局：让内部的可见性判断能认出页面底部的「下一节」
+        window.Element.prototype.getClientRects = function () {
+            const blocked = Array.from(this.ownerDocument.querySelectorAll('[style*="display:none"]'))
+                .some((node) => node === this || node.contains(this));
+            return blocked || !this.isConnected ? [] : [{ width: 10, height: 10 }];
+        };
+        app._currentStepTitle = () => '视频';
+        app._getVideoEl = () => window.document.querySelector('#video_html5_api');
+        app._clearCheckInterval = () => {};
+        window.document.addEventListener('click', (event) => {
+            const el = event.target;
+            const text = (el.innerText || el.textContent || '').trim();
+            clicks.push(text);
+            if (el.id === 'prevNextFocusNext') {
+                // 点底部「下一节」后，平台弹出任务点未完成提示框
+                window.document.querySelector('#jobFinishTip').style.display = 'block';
+            }
+        });
+        await app.nextUnit();
+        assert.equal(clicks.filter((text) => text === '下一节').length, 1, '应先点一次页面底部「下一节」');
+        assert.equal(clicks.filter((text) => text === '去学习').length, 1, '弹窗出现后应点「去学习」');
+    } finally {
+        restore();
+    }
+});
+

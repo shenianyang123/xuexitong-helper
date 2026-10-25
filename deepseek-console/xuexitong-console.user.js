@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         学习通自动刷课助手（DeepSeek 版）
 // @namespace    local.codex.xuexitong
-// @version      3.5.7
+// @version      3.5.8
 // @description  自动播放、多视频串联、断点续播、悬浮球控制，并可用本地服务自动作答章节测验
 // @author       Codex
 // @match        *://*.chaoxing.com/*mycourse/studentstudy*
@@ -68,7 +68,7 @@ function createPlayerApp(PAGE, entryOptions) {
 
     var OPTIONS = Object.assign({
         productName: "学习通自动播放助手",
-        version: "3.5.7",
+        version: "3.5.8",
         playbackRate: 1.5,
         muteVideo: false,
         autoResume: true
@@ -2570,6 +2570,74 @@ if (generic) return generic;
 return null;
 }
 
+/* 当前章节还有任务点没做完时，平台会弹「提示 / 当前章节还有任务点未完成，是否去完成？」
+ * 挡住底部的「下一节」：不点掉它，切换下一节就会一直等不到新内容而卡住。
+ * 默认点「去学习」把欠下的任务点补掉（章节测验随后仍由脚本自动作答）；
+ * 同一轮里反复弹则点「下一节」跳过，避免死循环。 */
+const JOB_TIP_PATTERN = /任务点未完成|是否去完成/;
+const JOB_TIP_GO_LABELS = ['去学习', '去完成', '继续学习'];
+const JOB_TIP_SKIP_LABELS = ['下一节', '跳过'];
+let jobTipHandled = 0;
+
+/* 只认样式上真正显示的节点：真实页面里 display:none 的隐藏模板（如 #jobFinishTip）
+ * 会被排除；jsdom 没有布局，getClientRects 恒为空，所以不能只靠它判断。 */
+function rendered(el) {
+if (!el || !el.isConnected) return false;
+const view = el.ownerDocument.defaultView;
+for (let node = el; node && node.nodeType === 1; node = node.parentElement) {
+if (node.hidden) return false;
+const style = view.getComputedStyle(node);
+if (style.display === 'none' || style.visibility === 'hidden') return false;
+}
+return true;
+}
+
+function findLabelIn(root, labels) {
+const candidates = [];
+for (const el of root.querySelectorAll('a,button,input[type="button"],[role="button"],div,span')) {
+if (!rendered(el)) continue;
+const text = clean(el.value || el.innerText || el.textContent);
+if (!text || labels.indexOf(text) < 0) continue;
+candidates.push(el);
+}
+return candidates.find((el) => /^(BUTTON|A|INPUT)$/.test(el.tagName)) ||
+candidates.find((el) => !Array.from(el.children).some((child) => labels.indexOf(clean(child.innerText)) >= 0)) ||
+candidates[0] || null;
+}
+
+function findJobTipDialog() {
+for (const doc of courseDocuments()) {
+for (const el of doc.querySelectorAll('div,span,p,a,button')) {
+const text = clean(el.innerText || el.textContent);
+if (!text || text.length > 200 || !JOB_TIP_PATTERN.test(text)) continue;
+if (!rendered(el)) continue;
+let box = el;
+for (let depth = 0; depth < 7 && box; depth++, box = box.parentElement) {
+const go = findLabelIn(box, JOB_TIP_GO_LABELS);
+if (go) return { go, skip: findLabelIn(box, JOB_TIP_SKIP_LABELS) };
+}
+}
+}
+return null;
+}
+
+async function resolveJobTipDialog() {
+const dialog = findJobTipDialog();
+if (!dialog) return false;
+/* 前两次补任务点（点「去学习」），连续第三次才跳过，避免“去学习 → 又弹 → 又去学习”的死循环 */
+const useSkip = jobTipHandled >= 2 || !dialog.go;
+const target = useSkip ? dialog.skip : dialog.go;
+if (!target) return false;
+jobTipHandled += 1;
+const label = clean(target.value || target.innerText || target.textContent);
+note(useSkip ? `当前小节还有任务点未完成，先跳过（点「${label}」）`
+: `当前小节还有任务点未完成，点击弹窗「${label}」`, 'warn');
+console.log(`平台提示当前章节还有任务点未完成，点击「${label}」继续`);
+target.click();
+await sleep(600);
+return true;
+}
+
 async function revealQuizQuestions() {
 const docs = courseDocuments();
 const submit = docs.map((doc) => findButton(doc, '提交')).find(Boolean);
@@ -2820,6 +2888,14 @@ throw new Error('脚本已停止');
 async function goToNextStep() {
 if (stopped) throw new Error('脚本已停止');
 if (typeof app._markSectionCompleted === 'function') app._markSectionCompleted();
+if (await resolveJobTipDialog()) {
+/* 弹窗是平台为了拦「下一节」而弹的：点掉之后交给主循环重新判断当前步骤，
+ * 不要在同一轮里继续点页面底部的「下一节」，否则会点空。 */
+app._nextUnitPending = false;
+if (typeof app._initCellData === 'function') app._initCellData();
+if (typeof app.play === 'function') app.play();
+return;
+}
 const next = findNextButton();
 if (!next) {
 /* 成绩页/部分新版页面底部没有“下一节”按钮：改按课程目录直接跳到下一小节 */
@@ -2830,6 +2906,7 @@ note(`未找到“下一节”按钮，按目录跳到第 ${target.c + 1} 章第
 app._nextUnitPending = false;
 if (!app._jumpToSection(target.c, target.n))
 throw new Error('按目录跳转下一小节失败');
+jobTipHandled = 0;
 return;
 }
 app._nextUnitPending = true;
@@ -2842,9 +2919,20 @@ console.log(`${previousStep || '当前学习步骤'}完成，点击页面“下�
 next.click();
 let currentStep = '';
 let stepReady = false;
+let dialogCooldown = 0;
 for (let attempt = 0; attempt < 240; attempt++) {
 if (stopped) throw new Error('脚本已停止');
 await sleep(500);
+if (dialogCooldown > 0) {
+dialogCooldown -= 1;
+} else if (findJobTipDialog()) {
+/* 点「下一节」后平台弹「当前章节还有任务点未完成」：点掉弹窗再交给主循环判断 */
+await resolveJobTipDialog();
+app._nextUnitPending = false;
+if (typeof app._initCellData === 'function') app._initCellData();
+if (typeof app.play === 'function') app.play();
+return;
+}
 currentStep = app._currentStepTitle();
 if (currentStep !== previousStep && currentStep === '章节测验') {
 stepReady = true;
@@ -2864,6 +2952,7 @@ throw new Error(`点击“下一节”后等待 120 秒，新学习步骤仍未�
 }
 app._nextUnitPending = false;
 app._videoEl = null;
+jobTipHandled = 0;
 app._initCellData();
 app.play();
 }
@@ -2872,7 +2961,7 @@ app.nextUnit = function () {
 if (stopped || this._nextUnitPending) return;
 this._nextUnitPending = true;
 if (typeof app._markSectionCompleted === 'function') app._markSectionCompleted();
-goToNextStep().catch((error) => {
+return goToNextStep().catch((error) => {
 this._nextUnitPending = false;
 console.error('切换下一学习步骤失败:', error);
 });
@@ -2907,6 +2996,8 @@ byInputs: extractQuestionsByInputs,
 letterOptions: optionElements,
 select: selectAnswers,
 completed: quizCompleted,
+jobTip: findJobTipDialog,
+resolveJobTip: resolveJobTipDialog,
 };
 
 app._advanceChapterTest = function () {
